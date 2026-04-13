@@ -450,7 +450,7 @@ function OperatorMonthMatrixTable({
   const nameSticky = 'left-[6.5rem]'
 
   return (
-    <div className={DASHBOARD_TABLE_WRAP}>
+    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
       <table className="min-w-max border-separate border-spacing-0 text-sm">
         <thead>
           <tr>
@@ -549,7 +549,7 @@ function ReportSection({
         </h2>
         {subtitle ? <p className="mt-1 text-xs text-slate-500">{subtitle}</p> : null}
       </div>
-      <div className="p-2">{children}</div>
+      <div className="min-w-0 p-2">{children}</div>
     </section>
   )
 }
@@ -564,7 +564,7 @@ function SimpleTable({
   empty: string
 }) {
   return (
-    <div className={DASHBOARD_TABLE_WRAP}>
+    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
       <table className={DASHBOARD_TABLE_REPORT}>
         <thead>
           <tr>
