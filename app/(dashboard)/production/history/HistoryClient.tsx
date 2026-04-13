@@ -32,7 +32,10 @@ interface LineRow {
 
 const EDIT_ROLES = new Set(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
 
-/** หัวตารางหลัก — ติดด้านบนขณะเลื่อนใน main (dashboard) */
+/**
+ * หัวตารางหลัก — sticky บน <th> ต้องใช้กับ `border-separate` (ไม่ใช้ border-collapse)
+ * มิฉะนั้นบาง Chromium/WebKit จะไม่แสดงแถวหัวเมื่อใช้ position:sticky ที่ th
+ */
 const HISTORY_MAIN_HEAD_TH =
   'sticky top-0 z-20 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
 
@@ -639,9 +642,9 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
         </div>
       ) : (
         <div className={cn('overflow-x-auto rounded-lg shadow-sm', loading && 'opacity-60 pointer-events-none')}>
-          <table className="w-full border-collapse bg-white">
+          <table className="w-full border-separate border-spacing-0 bg-white">
             <thead>
-              <tr className="border-b-2 border-slate-200">
+              <tr>
                 <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>
                 <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'ชิ้นงาน' : 'Part'}</th>
                 <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'รวมทั้งวัน' : 'Total'}</th>
