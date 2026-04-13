@@ -913,9 +913,9 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                             </div>
                             <table className="w-full text-[10px] border-collapse">
                               <thead>
-                                <tr className="border-b border-slate-200">
-                                  <th className="text-left py-1 font-medium text-slate-600">Part</th>
-                                  <th className="text-right py-1 font-medium text-slate-600">Qty</th>
+                                <tr className="border-b border-slate-200 bg-slate-100">
+                                  <th className="text-left py-1.5 px-1 font-semibold text-slate-700">Part</th>
+                                  <th className="text-right py-1.5 px-1 font-semibold text-slate-700">Qty</th>
                                 </tr>
                               </thead>
                               <tbody>

@@ -9,6 +9,7 @@ import { getOeeBg } from '@/lib/utils/oee'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils/cn'
 import {
+  DASHBOARD_MATRIX_TH_HEAD,
   DASHBOARD_STICKY_TOP_INSET,
   DASHBOARD_TABLE_REPORT,
   DASHBOARD_TABLE_WRAP,
@@ -452,11 +453,12 @@ function OperatorMonthMatrixTable({
     <div className={DASHBOARD_TABLE_WRAP}>
       <table className="min-w-max border-separate border-spacing-0 text-sm">
         <thead>
-          <tr className="text-xs text-slate-600">
+          <tr>
             <th
               className={cn(
-                'sticky z-40 border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-left text-xs font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
+                'sticky z-40 border-r border-slate-200 px-2 py-2 text-left',
                 DASHBOARD_STICKY_TOP_INSET,
+                DASHBOARD_MATRIX_TH_HEAD,
                 'left-0',
                 codeW,
               )}
@@ -465,8 +467,9 @@ function OperatorMonthMatrixTable({
             </th>
             <th
               className={cn(
-                'sticky z-40 min-w-[10rem] w-[10rem] border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-left text-xs font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
+                'sticky z-40 min-w-[10rem] w-[10rem] border-r border-slate-200 px-2 py-2 text-left',
                 DASHBOARD_STICKY_TOP_INSET,
+                DASHBOARD_MATRIX_TH_HEAD,
                 nameSticky,
               )}
             >
@@ -476,8 +479,9 @@ function OperatorMonthMatrixTable({
               <th
                 key={d}
                 className={cn(
-                  'sticky z-20 min-w-[5.5rem] max-w-[6.5rem] border-b border-slate-200 bg-slate-50 px-1 py-2 text-center text-xs font-medium leading-tight',
+                  'sticky z-20 min-w-[5.5rem] max-w-[6.5rem] px-1 py-2 text-center leading-tight',
                   DASHBOARD_STICKY_TOP_INSET,
+                  DASHBOARD_MATRIX_TH_HEAD,
                 )}
               >
                 {d}
