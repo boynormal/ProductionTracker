@@ -34,10 +34,10 @@ const EDIT_ROLES = new Set(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
 
 /**
  * หัวตารางหลัก — sticky บน <th> ต้องใช้กับ `border-separate` (ไม่ใช้ border-collapse)
- * มิฉะนั้นบาง Chromium/WebKit จะไม่แสดงแถวหัวเมื่อใช้ position:sticky ที่ th
+ * top ติดลบให้ตรงกับ padding บนของ <main> (p-4 / sm:p-6) เพื่อไม่ให้มีช่องว่างเมื่อหัวติด
  */
 const HISTORY_MAIN_HEAD_TH =
-  'sticky top-0 z-20 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
+  'sticky top-[-1rem] z-20 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)] sm:top-[-1.5rem]'
 
 function recordForHourSlot(records: any[], slot: number) {
   return records.find((r: any) => Number(r.hourSlot) === slot)
