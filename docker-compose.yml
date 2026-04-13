@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: production_tracker_db
+    restart: always
+    environment:
+      POSTGRES_USER: pt_user
+      POSTGRES_PASSWORD: pt_pass_2024
+      POSTGRES_DB: production_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pt_user -d production_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

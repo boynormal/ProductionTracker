@@ -1,0 +1,522 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===============================
+// ORGANIZATION
+// ===============================
+
+model Department {
+  id             String     @id @default(cuid())
+  departmentCode String     @unique
+  departmentName String
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  divisions Division[]
+  users     User[]
+
+  @@map("departments")
+}
+
+model Division {
+  id           String   @id @default(cuid())
+  departmentId String
+  divisionCode String   @unique
+  divisionName String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id])
+  sections   Section[]
+  users      User[]
+
+  @@map("divisions")
+}
+
+model Section {
+  id          String   @id @default(cuid())
+  divisionId  String
+  sectionCode String   @unique
+  sectionName String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  division Division @relation(fields: [divisionId], references: [id])
+  users    User[]
+  lines    Line[]
+
+  @@map("sections")
+}
+
+// ===============================
+// USERS
+// ===============================
+
+model User {
+  id             String    @id @default(cuid())
+  employeeCode   String    @unique
+  employeeTitle  String?
+  firstName      String
+  lastName       String
+  email          String?   @unique
+  passwordHash   String
+  pin            String?
+  role           UserRole  @default(OPERATOR)
+  positionCode   String?
+  positionName   String?
+  departmentId   String?
+  divisionId     String?
+  sectionId      String?
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  department    Department?        @relation(fields: [departmentId], references: [id])
+  division      Division?          @relation(fields: [divisionId], references: [id])
+  section       Section?           @relation(fields: [sectionId], references: [id])
+  sessions      ProductionSession[]
+  hourlyRecords HourlyRecord[]
+  scanLogs      ScanLog[]
+  auditLogs     AuditLog[]
+  capableParts  UserPartCapability[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  OPERATOR
+  SUPERVISOR
+  ENGINEER
+  MANAGER
+  ADMIN
+}
+
+// ===============================
+// PRODUCTION MASTER
+// ===============================
+
+model Line {
+  id           String   @id @default(cuid())
+  sectionId    String?
+  /// รหัสฝ่าย (สำเนาจาก Division ผ่าน Section) — ใช้กรอง ไม่มี FK
+  divisionCode String?
+  lineCode     String   @unique
+  lineName     String
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  section          Section?           @relation(fields: [sectionId], references: [id])
+  machines         Machine[]
+  sessions         ProductionSession[]
+  linePartTargets  LinePartTarget[]
+
+  @@index([divisionCode])
+  @@map("lines")
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  customerCode String   @unique
+  customerName String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  parts Part[]
+
+  @@map("customers")
+}
+
+model Machine {
+  id           String   @id @default(cuid())
+  lineId       String
+  mcNo         String   @unique
+  mcName       String
+  mcType       String?
+  department   String?
+  process      String?
+  sheetRef     String?
+  // Asset
+  assetCode    String?
+  serialNo     String?
+  brand        String?
+  modelNo      String?
+  manufacturerYear Int?
+  purchaseDate DateTime?
+  warrantyExpiry   DateTime?
+  // Location
+  location     String?
+  installDate  DateTime?
+  // Technical
+  powerKW      Float?
+  weightKg     Float?
+  dimensions   String?
+  voltage      String?
+  frequency    String?
+  // PM
+  maintenanceIntervalDays Int?
+  lastMaintenanceDate     DateTime?
+  nextMaintenanceDate     DateTime?
+  responsiblePerson       String?
+  pmGeneralNote           String?   @db.Text
+  pmMajorNote             String?   @db.Text
+  // Status
+  conditionRating Int?
+  remark          String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  line          Line               @relation(fields: [lineId], references: [id])
+  partTargets   MachinePartTarget[]
+  sessions      ProductionSession[]
+  hourlyRecords HourlyRecord[]
+  breakdownLogs BreakdownLog[]
+  ngLogs        NgLog[]
+  qrCode        MachineQrCode?
+  scanLogs      ScanLog[]
+  images        MachineImage[]
+
+  @@map("machines")
+}
+
+model MachineImage {
+  id        String   @id @default(cuid())
+  machineId String
+  url       String
+  caption   String?
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@map("machine_images")
+}
+
+model Part {
+  id         String   @id @default(cuid())
+  partSamco  Int      @unique
+  partNo     String
+  partName   String
+  customerId String?
+  unit       String   @default("PCS")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer          Customer?          @relation(fields: [customerId], references: [id])
+  targets           MachinePartTarget[]
+  lineTargets       LinePartTarget[]
+  hourlyRecords     HourlyRecord[]
+  userCapabilities  UserPartCapability[]
+
+  @@map("parts")
+}
+
+/// Part ที่ผู้ใช้สามารถขึ้นงานได้ (ลงชื่อบันทึกผลผลิต) — ถ้าไม่มีแถวใดเลย = ใช้ได้ทุกรุ่น (ย้อนหลัง)
+model UserPartCapability {
+  id        String   @id @default(cuid())
+  userId    String
+  partId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  part Part @relation(fields: [partId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, partId])
+  @@map("user_part_capabilities")
+}
+
+model MachinePartTarget {
+  id            String   @id @default(cuid())
+  machineId     String
+  partId        String
+  cycleTimeMin  Float
+  piecesPerHour Int
+  target8Hr     Int
+  target11Hr    Int
+  efficiency    Float    @default(0.85)
+  effectiveDate DateTime @default(now())
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  machine Machine @relation(fields: [machineId], references: [id])
+  part    Part    @relation(fields: [partId], references: [id])
+
+  @@unique([machineId, partId, effectiveDate])
+  @@map("machine_part_targets")
+}
+
+/// Target การผลิตรายชั่วโมงระดับ Line (รวมทุกเครื่องใน Line) — ใช้คำนวณ OEE ระดับ Line
+model LinePartTarget {
+  id            String   @id @default(cuid())
+  lineId        String
+  partId        String
+  piecesPerHour Int
+  target8Hr     Int
+  target11Hr    Int
+  cycleTimeMin  Float?
+  efficiency    Float    @default(0.85)
+  effectiveDate DateTime @default(now())
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  line Line @relation(fields: [lineId], references: [id])
+  part Part @relation(fields: [partId], references: [id])
+
+  @@unique([lineId, partId, effectiveDate])
+  @@map("line_part_targets")
+}
+
+model ProblemCategory {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  type        ProblemType
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  breakdownLogs BreakdownLog[]
+  ngLogs        NgLog[]
+
+  @@map("problem_categories")
+}
+
+enum ProblemType {
+  BREAKDOWN
+  NG
+}
+
+// ===============================
+// TRANSACTION
+// ===============================
+
+model ProductionSession {
+  id          String        @id @default(cuid())
+  sessionDate DateTime      @db.Date
+  shiftType   ShiftType
+  lineId      String
+  machineId   String?
+  operatorId  String
+  status      SessionStatus @default(IN_PROGRESS)
+  startTime   DateTime
+  endTime     DateTime?
+  normalHours Int           @default(8)
+  otHours     Int           @default(0)
+  totalHours  Int
+  remark      String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  line          Line           @relation(fields: [lineId], references: [id])
+  machine       Machine?       @relation(fields: [machineId], references: [id])
+  operator      User           @relation(fields: [operatorId], references: [id])
+  hourlyRecords HourlyRecord[]
+  modelChanges  ModelChange[]
+
+  @@unique([sessionDate, shiftType, lineId])
+  @@map("production_sessions")
+}
+
+enum ShiftType {
+  DAY
+  NIGHT
+}
+
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model HourlyRecord {
+  id             String   @id @default(cuid())
+  sessionId      String
+  hourSlot       Int
+  recordTime     DateTime
+  partId         String
+  machineId      String?
+  operatorId     String
+  targetQty      Int
+  okQty          Int
+  isOvertimeHour Boolean  @default(false)
+  hasBreakdown   Boolean  @default(false)
+  hasNg          Boolean  @default(false)
+  isModelChanged Boolean  @default(false)
+  remark         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  session       ProductionSession @relation(fields: [sessionId], references: [id])
+  part          Part              @relation(fields: [partId], references: [id])
+  machine       Machine?          @relation(fields: [machineId], references: [id])
+  operator      User              @relation(fields: [operatorId], references: [id])
+  breakdownLogs BreakdownLog[]
+  ngLogs        NgLog[]
+  modelChange   ModelChange?
+
+  @@unique([sessionId, hourSlot])
+  @@map("hourly_records")
+}
+
+model BreakdownLog {
+  id                String    @id @default(cuid())
+  hourlyRecordId    String
+  machineId         String?
+  breakdownStart    DateTime
+  breakdownEnd      DateTime?
+  breakTimeMin      Int
+  problemCategoryId String
+  problemDetail     String?
+  actionTaken       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  hourlyRecord    HourlyRecord    @relation(fields: [hourlyRecordId], references: [id])
+  machine         Machine?        @relation(fields: [machineId], references: [id])
+  problemCategory ProblemCategory @relation(fields: [problemCategoryId], references: [id])
+
+  @@map("breakdown_logs")
+}
+
+model NgLog {
+  id                String   @id @default(cuid())
+  hourlyRecordId    String
+  machineId         String?
+  ngQty             Int
+  problemCategoryId String
+  problemDetail     String?
+  actionTaken       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  hourlyRecord    HourlyRecord    @relation(fields: [hourlyRecordId], references: [id])
+  machine         Machine?        @relation(fields: [machineId], references: [id])
+  problemCategory ProblemCategory @relation(fields: [problemCategoryId], references: [id])
+
+  @@map("ng_logs")
+}
+
+model ModelChange {
+  id             String    @id @default(cuid())
+  sessionId      String
+  hourlyRecordId String    @unique
+  changeTime     DateTime
+  fromPartId     String?
+  toPartId       String?
+  changeoverMin  Int?
+  remark         String?
+  createdAt      DateTime  @default(now())
+
+  session      ProductionSession @relation(fields: [sessionId], references: [id])
+  hourlyRecord HourlyRecord      @relation(fields: [hourlyRecordId], references: [id])
+
+  @@map("model_changes")
+}
+
+// ===============================
+// QR CODE & SCAN
+// ===============================
+
+model MachineQrCode {
+  id          String   @id @default(cuid())
+  machineId   String   @unique
+  qrContent   String
+  qrImagePath String?
+  generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  machine Machine @relation(fields: [machineId], references: [id])
+
+  @@map("machine_qr_codes")
+}
+
+model ScanLog {
+  id        String   @id @default(cuid())
+  machineId String
+  userId    String?
+  scannedAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+  action    String?
+
+  machine Machine @relation(fields: [machineId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@map("scan_logs")
+}
+
+// ===============================
+// NOTIFICATION
+// ===============================
+
+model Notification {
+  id         String           @id @default(cuid())
+  type       NotificationType
+  title      String
+  message    String
+  targetRole UserRole?
+  machineId  String?
+  sessionId  String?
+  hourSlot   Int?
+  isRead     Boolean          @default(false)
+  sentVia    String?
+  createdAt  DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  MISSING_RECORD
+  LOW_PRODUCTION
+  HIGH_NG
+  LONG_BREAKDOWN
+  SYSTEM
+}
+
+// ===============================
+// SYSTEM
+// ===============================
+
+model Holiday {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("holidays")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}

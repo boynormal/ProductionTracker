@@ -1,0 +1,10 @@
+node_modules/
+.next/
+.env.local
+.env
+*.tsbuildinfo
+next-env.d.ts
+
+# รูปที่อัปโหลดจากผู้ใช้ (คงโฟลเดอร์ด้วย .gitkeep)
+public/uploads/machines/*
+!public/uploads/machines/.gitkeep
