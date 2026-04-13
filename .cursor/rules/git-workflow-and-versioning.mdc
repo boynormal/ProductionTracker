@@ -1,0 +1,94 @@
+---
+description: Always-on — trunk-based habits, atomic commits, messages, hygiene (from addyosmani/agent-skills git-workflow-and-versioning).
+alwaysApply: true
+---
+
+# Git Workflow and Versioning
+
+## Overview
+
+Treat commits as save points and history as documentation. Keep changes small, reviewable, and reversible.
+
+## When to Use
+
+Always. Every code change flows through git.
+
+## Core Principles
+
+### Trunk-Based Development (recommended)
+
+Keep `main` deployable. Prefer short-lived feature branches (merge within days). Prefer feature flags over long-lived branches for incomplete work.
+
+### Commit Early, Commit Often
+
+Pattern: implement slice → verify → commit → next slice. Do not accumulate large uncommitted changes.
+
+### Atomic Commits
+
+Each commit does one logical thing. Separate refactors from features when they are independent.
+
+### Descriptive Messages
+
+Explain **why**, not only **what**. Suggested form:
+
+```
+<type>: <short description>
+
+<optional body>
+```
+
+**Types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
+
+### Size Changes
+
+Target ~100 lines per logical commit/PR when practical; split very large diffs.
+
+### Branch Naming (when branching)
+
+`feature/…`, `fix/…`, `chore/…`, `refactor/…`
+
+## Pre-Commit Hygiene
+
+Before committing:
+
+- Review `git diff` / `git diff --staged`
+- Ensure no secrets (passwords, tokens, `.env` contents) in the diff — this repo ignores `.env` / `.env.local` via `.gitignore`; do not force-add them
+- Run `npm run lint` and `npx tsc --noEmit`; run `npm run build` before merges or when changes are broad
+
+## Generated / Ignored Files
+
+- Commit `package-lock.json`, Prisma migrations, and project-expected artifacts
+- Do not commit `node_modules/`, `.next/`, `.env`, `.env.local`
+
+## Change Summary (for agents)
+
+After substantive work, a short summary helps review:
+
+- What files changed and why
+- What was intentionally out of scope
+- Any risks or follow-ups
+
+## Common rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll commit when the feature is done" | Giant commits are hard to review, debug, revert. |
+| "The message doesn't matter" | History is documentation for humans and agents. |
+| "I'll squash it all later" | Prefer clean incremental commits from the start. |
+| "I'll split this change later" | Split before review/merge, not after. |
+
+## Red Flags
+
+- Messages like "fix", "update", "misc"
+- Formatting-only churn mixed with behavior changes in the same commit without need
+- Committing secrets or local env files
+- Force-pushing shared branches without team agreement
+
+## Verification (each commit)
+
+- [ ] One logical change (or clearly related set)
+- [ ] Message follows conventions and explains intent
+- [ ] Lint/typecheck (and build when appropriate) pass
+- [ ] No secrets in the diff
+
+_Source: MIT — addyosmani/agent-skills (adapted for this repo)._

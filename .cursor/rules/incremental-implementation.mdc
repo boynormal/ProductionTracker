@@ -1,0 +1,87 @@
+---
+description: Always-on — thin vertical slices, test/verify between changes, scope discipline (from addyosmani/agent-skills incremental-implementation).
+alwaysApply: true
+---
+
+# Incremental Implementation
+
+## Overview
+
+Build in thin vertical slices — implement one piece, test it, verify it, then expand. Avoid implementing an entire feature in one pass. Each increment should leave the system in a working, testable state.
+
+## When to Use
+
+- Implementing any multi-file change
+- Building a new feature from a task breakdown
+- Refactoring existing code
+- Any time you're tempted to write more than ~100 lines before testing
+
+**When NOT to use:** Single-file, single-function changes where the scope is already minimal.
+
+## The Increment Cycle
+
+For each slice:
+
+1. **Implement** the smallest complete piece of functionality
+2. **Test** — run automated tests if the project has them; otherwise rely on build + typecheck + lint + targeted manual check
+3. **Verify** — confirm the slice works as expected
+4. **Commit** — save progress with a descriptive message (see `git-workflow-and-versioning`)
+5. **Move to the next slice**
+
+## Implementation Rules
+
+### Rule 0: Simplicity First
+
+Before writing code, ask: "What is the simplest thing that could work?" Avoid premature abstractions.
+
+### Rule 0.5: Scope Discipline
+
+Touch only what the task requires. Do not clean up adjacent code, refactor unrelated files, or add unrequested features. Note "noticed but not touching" items instead.
+
+### Rule 1: One Thing at a Time
+
+Each increment changes one logical thing. Do not mix unrelated refactors with features in one commit.
+
+### Rule 2: Keep It Compilable
+
+After each increment, the project must build and existing checks must pass.
+
+### Rule 3–5
+
+Use feature flags for incomplete user-visible features when merging early. Prefer safe defaults and rollback-friendly, additive changes.
+
+## Project verification (this repo)
+
+After each meaningful increment, prefer:
+
+- `npm run build` (or at least `npx tsc --noEmit` for smaller edits)
+- `npm run lint`
+- `npx tsc --noEmit`
+
+Run `npm test` only if a test script exists and is relevant.
+
+## Common rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll test it all at the end" | Bugs compound; test each slice. |
+| "It's faster to do it all at once" | Hard to locate which of hundreds of lines broke. |
+| "These changes are too small to commit separately" | Small commits are cheap; large ones hide bugs. |
+| "This refactor is small enough to include" | Mixing refactor + feature complicates review and revert. |
+
+## Red Flags
+
+- More than ~100 lines without verify/build
+- Multiple unrelated changes in one increment
+- Skipping verify to move faster
+- Build or lint broken between increments
+- Touching files outside task scope "while I'm here"
+
+## Verification (task complete)
+
+- [ ] Each increment was verified; commits are scoped
+- [ ] `npm run build`, `npm run lint`, and `npx tsc --noEmit` pass when applicable
+- [ ] Feature works end-to-end as specified
+- [ ] No stray uncommitted changes intended for the task
+
+_Source: MIT — addyosmani/agent-skills (adapted for this Next.js repo)._
