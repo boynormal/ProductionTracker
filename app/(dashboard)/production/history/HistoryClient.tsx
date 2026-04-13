@@ -641,8 +641,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
           {t('noData')}
         </div>
       ) : (
-        <div className={cn('overflow-x-auto rounded-lg shadow-sm', loading && 'opacity-60 pointer-events-none')}>
-          <table className="w-full border-separate border-spacing-0 bg-white">
+        <div className={cn('w-full min-w-0 rounded-lg shadow-sm ring-1 ring-slate-200/80', loading && 'opacity-60 pointer-events-none')}>
+          <table className="w-full min-w-[72rem] border-separate border-spacing-0 bg-white">
             <thead>
               <tr>
                 <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { NavRail } from '@/components/layout/NavRail'
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
+import { MobileNavDrawer } from '@/components/layout/MobileNavDrawer'
 import { Header } from '@/components/layout/Header'
 
 type Props = {
@@ -13,53 +15,38 @@ type Props = {
 
 export function DashboardShell({ children, userName, userRole }: Props) {
   const pathname = usePathname()
-  const [navOpen, setNavOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const closeNav = useCallback(() => setNavOpen(false), [])
+  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), [])
 
   useEffect(() => {
-    closeNav()
-  }, [pathname, closeNav])
+    closeMobileMenu()
+  }, [pathname, closeMobileMenu])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeNav()
+      if (e.key === 'Escape') closeMobileMenu()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [closeNav])
+  }, [closeMobileMenu])
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      {navOpen && (
-        <button
-          type="button"
-          aria-label="Close menu"
-          className="fixed inset-0 z-40 bg-black/40 transition-opacity lg:hidden"
-          onClick={closeNav}
-        />
-      )}
-
-      <Sidebar
-        id="dashboard-nav-sidebar"
-        userRole={userRole}
-        onNavigate={closeNav}
-        className={
-          'fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out ' +
-          'lg:static lg:z-auto lg:translate-x-0 ' +
-          (navOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')
-        }
-      />
+      <NavRail userRole={userRole} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Header
-          userName={userName}
-          userRole={userRole}
-          onMenuClick={() => setNavOpen(o => !o)}
-          menuOpen={navOpen}
-        />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <Header userName={userName} userRole={userRole} />
+        <main className="flex-1 min-h-0 min-w-0 overflow-auto p-4 sm:p-6 pb-[5.5rem] lg:pb-6">{children}</main>
       </div>
+
+      <MobileBottomNav onOpenMenu={() => setMobileMenuOpen(true)} />
+      <MobileNavDrawer
+        open={mobileMenuOpen}
+        onClose={closeMobileMenu}
+        userName={userName}
+        userRole={userRole}
+      />
     </div>
   )
 }
