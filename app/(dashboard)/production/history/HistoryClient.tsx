@@ -9,6 +9,11 @@ import { cn } from '@/lib/utils/cn'
 import { HistoryHourlyEditDialog } from './HistoryHourlyEditDialog'
 import { getBangkokHour, isBangkokDayShiftHour } from '@/lib/utils/thai-time'
 import { canonicalDivisionName } from '@/lib/org-display'
+import {
+  DASHBOARD_TABLE_WRAP,
+  DASHBOARD_TABLE_WIDE,
+  DASHBOARD_TH_STICKY_SOLID,
+} from '@/lib/dashboard-sticky-table-classes'
 
 interface LineRow {
   id: string
@@ -31,13 +36,6 @@ interface LineRow {
 }
 
 const EDIT_ROLES = new Set(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
-
-/**
- * หัวตารางหลัก — sticky บน <th> ต้องใช้กับ `border-separate` (ไม่ใช้ border-collapse)
- * top ติดลบให้ตรงกับ padding บนของ <main> (p-4 / sm:p-6) เพื่อไม่ให้มีช่องว่างเมื่อหัวติด
- */
-const HISTORY_MAIN_HEAD_TH =
-  'sticky top-[-1rem] z-20 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)] sm:top-[-1.5rem]'
 
 function recordForHourSlot(records: any[], slot: number) {
   return records.find((r: any) => Number(r.hourSlot) === slot)
@@ -641,19 +639,19 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
           {t('noData')}
         </div>
       ) : (
-        <div className={cn('w-full min-w-0 rounded-lg shadow-sm ring-1 ring-slate-200/80', loading && 'opacity-60 pointer-events-none')}>
-          <table className="w-full min-w-[72rem] border-separate border-spacing-0 bg-white">
+        <div className={cn(DASHBOARD_TABLE_WRAP, loading && 'opacity-60 pointer-events-none')}>
+          <table className={DASHBOARD_TABLE_WIDE}>
             <thead>
               <tr>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'ชิ้นงาน' : 'Part'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'รวมทั้งวัน' : 'Total'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'กะเช้า' : 'Day'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'OT เช้า' : 'Day OT'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'OT ดึก' : 'Night OT'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>
-                <th className={HISTORY_MAIN_HEAD_TH}>NG</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'ชิ้นงาน' : 'Part'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'รวมทั้งวัน' : 'Total'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะเช้า' : 'Day'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT เช้า' : 'Day OT'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT ดึก' : 'Night OT'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>NG</th>
               </tr>
             </thead>
             <tbody>

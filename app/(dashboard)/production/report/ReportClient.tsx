@@ -7,6 +7,13 @@ import { BarChart3, Loader2, Users, Package, Cog, Search } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { getOeeBg } from '@/lib/utils/oee'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils/cn'
+import {
+  DASHBOARD_STICKY_TOP_INSET,
+  DASHBOARD_TABLE_REPORT,
+  DASHBOARD_TABLE_WRAP,
+  DASHBOARD_TH_STICKY_SOFT,
+} from '@/lib/dashboard-sticky-table-classes'
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -442,24 +449,36 @@ function OperatorMonthMatrixTable({
   const nameSticky = 'left-[6.5rem]'
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-100">
-      <table className="min-w-max border-collapse text-sm">
+    <div className={DASHBOARD_TABLE_WRAP}>
+      <table className="min-w-max border-separate border-spacing-0 text-sm">
         <thead>
-          <tr className="bg-slate-50 text-xs text-slate-600">
+          <tr className="text-xs text-slate-600">
             <th
-              className={`sticky left-0 z-30 ${codeW} border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]`}
+              className={cn(
+                'sticky z-40 border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-left text-xs font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
+                DASHBOARD_STICKY_TOP_INSET,
+                'left-0',
+                codeW,
+              )}
             >
               {th ? 'รหัสพนักงาน' : 'Employee ID'}
             </th>
             <th
-              className={`sticky ${nameSticky} z-30 min-w-[10rem] w-[10rem] border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-left font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]`}
+              className={cn(
+                'sticky z-40 min-w-[10rem] w-[10rem] border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-left text-xs font-medium shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]',
+                DASHBOARD_STICKY_TOP_INSET,
+                nameSticky,
+              )}
             >
               {th ? 'ชื่อพนักงาน' : 'Name'}
             </th>
             {dayNums.map((d) => (
               <th
                 key={d}
-                className="min-w-[5.5rem] max-w-[6.5rem] border-b border-slate-200 px-1 py-2 text-center font-medium leading-tight"
+                className={cn(
+                  'sticky z-20 min-w-[5.5rem] max-w-[6.5rem] border-b border-slate-200 bg-slate-50 px-1 py-2 text-center text-xs font-medium leading-tight',
+                  DASHBOARD_STICKY_TOP_INSET,
+                )}
               >
                 {d}
               </th>
@@ -541,23 +560,23 @@ function SimpleTable({
   empty: string
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] text-sm">
+    <div className={DASHBOARD_TABLE_WRAP}>
+      <table className={DASHBOARD_TABLE_REPORT}>
         <thead>
-          <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
+          <tr>
             {cols.map((c) => (
-              <th key={c} className="whitespace-nowrap px-3 py-2 font-medium">
+              <th key={c} className={DASHBOARD_TH_STICKY_SOFT}>
                 {c}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-50">
+        <tbody>
           {rows.length === 0 ? (
             <tr>
               <td
                 colSpan={cols.length}
-                className="px-3 py-12 text-center text-sm font-medium text-slate-600"
+                className="border border-slate-100 px-3 py-12 text-center text-sm font-medium text-slate-600"
               >
                 {empty}
               </td>
@@ -566,7 +585,7 @@ function SimpleTable({
             rows.map((cells, i) => (
               <tr key={i} className="hover:bg-slate-50/80">
                 {cells.map((cell, j) => (
-                  <td key={j} className="px-3 py-2 text-slate-700">
+                  <td key={j} className="border border-slate-100 px-3 py-2 text-slate-700">
                     {cell}
                   </td>
                 ))}

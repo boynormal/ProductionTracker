@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { Search, Plus, Pencil, UserCheck, UserX } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
+import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
 
 const ROLES = ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] as const
 const roleBadge: Record<string, string> = {
@@ -237,41 +238,41 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
         <span className="self-center text-sm text-slate-500">{filtered.length} / {users.length}</span>
       </div>
 
-      <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm">
+        <table className={DASHBOARD_TABLE_BASE}>
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'รหัส' : 'Code'}</th>
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'คำนำหน้า' : 'Title'}</th>
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'ชื่อ-สกุล' : 'Name'}</th>
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'ตำแหน่ง' : 'Position'}</th>
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'แผนก' : 'Department'}</th>
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'ฝ่าย' : 'Division'}</th>
-              <th className="px-4 py-3 text-left">{locale === 'th' ? 'ส่วน' : 'Section'}</th>
-              <th className="px-4 py-3 text-left">Role</th>
-              <th className="px-4 py-3 text-center">{locale === 'th' ? 'สถานะ' : 'Status'}</th>
-              <th className="px-4 py-3 text-right">{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
+            <tr>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'รหัส' : 'Code'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'คำนำหน้า' : 'Title'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ชื่อ-สกุล' : 'Name'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ตำแหน่ง' : 'Position'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'แผนก' : 'Department'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ฝ่าย' : 'Division'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ส่วน' : 'Section'}</th>
+              <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Role</th>
+              <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{locale === 'th' ? 'สถานะ' : 'Status'}</th>
+              <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody>
             {filtered.map(u => (
               <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 font-mono font-medium text-slate-800">{u.employeeCode}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">{u.employeeTitle ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{u.firstName} {u.lastName}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">{u.positionName ?? '—'}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">{u.department?.departmentName ?? '—'}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">{u.division?.divisionName ?? '—'}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">{u.section?.sectionName ?? '—'}</td>
-                <td className="px-4 py-3">
+                <td className="border border-slate-100 px-4 py-3 font-mono font-medium text-slate-800">{u.employeeCode}</td>
+                <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.employeeTitle ?? '—'}</td>
+                <td className="border border-slate-100 px-4 py-3 text-slate-700">{u.firstName} {u.lastName}</td>
+                <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.positionName ?? '—'}</td>
+                <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.department?.departmentName ?? '—'}</td>
+                <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.division?.divisionName ?? '—'}</td>
+                <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.section?.sectionName ?? '—'}</td>
+                <td className="border border-slate-100 px-4 py-3">
                   <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', roleBadge[u.role])}>{u.role}</span>
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="border border-slate-100 px-4 py-3 text-center">
                   <Badge variant={u.isActive ? 'success' : 'secondary'}>
                     {u.isActive ? (locale === 'th' ? 'ใช้งาน' : 'Active') : (locale === 'th' ? 'ปิดใช้งาน' : 'Inactive')}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-right space-x-1">
+                <td className="border border-slate-100 px-4 py-3 text-right space-x-1">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(u)} title="Edit">
                     <Pencil size={15} />
                   </Button>
@@ -283,9 +284,11 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="py-8 text-center text-sm text-slate-400">
-                {locale === 'th' ? 'ไม่พบข้อมูล' : 'No users found'}
-              </td></tr>
+              <tr>
+                <td colSpan={10} className="border border-slate-100 py-8 text-center text-sm text-slate-400">
+                  {locale === 'th' ? 'ไม่พบข้อมูล' : 'No users found'}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

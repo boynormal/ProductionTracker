@@ -12,6 +12,8 @@ import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { CalendarX2, Plus, Pencil, Trash2 } from 'lucide-react'
 import { getThaiTodayUTC, formatUtcCalendarDate, formatThaiDateUTCISO } from '@/lib/time-utils'
+import { cn } from '@/lib/utils/cn'
+import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
 
 const emptyForm = { date: '', name: '', description: '' }
 
@@ -128,25 +130,25 @@ export function HolidaysClient({ holidays }: { holidays: any[] }) {
             {locale === 'th' ? 'ไม่มีวันหยุดที่กำหนดไว้' : 'No upcoming holidays'}
           </div>
         ) : (
-          <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm">
+            <table className={DASHBOARD_TABLE_BASE}>
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                  <th className="px-4 py-3 text-left">{locale === 'th' ? 'วันที่' : 'Date'}</th>
-                  <th className="px-4 py-3 text-left">{locale === 'th' ? 'ชื่อวันหยุด' : 'Name'}</th>
-                  <th className="px-4 py-3 text-left">{locale === 'th' ? 'รายละเอียด' : 'Description'}</th>
-                  <th className="px-4 py-3 text-right">{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
+                <tr>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'วันที่' : 'Date'}</th>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ชื่อวันหยุด' : 'Name'}</th>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'รายละเอียด' : 'Description'}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody>
                 {upcoming.map(h => (
                   <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-slate-800">
+                    <td className="border border-slate-100 px-4 py-3 font-mono text-slate-800">
                       {formatUtcCalendarDate(new Date(h.date), locale === 'th' ? 'th-TH-u-ca-gregory' : 'en-GB')}
                     </td>
-                    <td className="px-4 py-3 font-medium text-slate-700">{h.name}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{h.description ?? '—'}</td>
-                    <td className="px-4 py-3 text-right space-x-1">
+                    <td className="border border-slate-100 px-4 py-3 font-medium text-slate-700">{h.name}</td>
+                    <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{h.description ?? '—'}</td>
+                    <td className="border border-slate-100 px-4 py-3 text-right space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(h)}><Pencil size={15} /></Button>
                       <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(h.id)} disabled={deleting === h.id}>
                         <Trash2 size={15} className="text-red-500" />
@@ -166,25 +168,25 @@ export function HolidaysClient({ holidays }: { holidays: any[] }) {
           <h2 className="text-sm font-semibold text-slate-400 mb-2">
             {locale === 'th' ? 'วันหยุดที่ผ่านแล้ว' : 'Past Holidays'}
           </h2>
-          <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm">
+            <table className={DASHBOARD_TABLE_BASE}>
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                  <th className="px-4 py-3 text-left">{locale === 'th' ? 'วันที่' : 'Date'}</th>
-                  <th className="px-4 py-3 text-left">{locale === 'th' ? 'ชื่อ' : 'Name'}</th>
-                  <th className="px-4 py-3 text-left">{locale === 'th' ? 'รายละเอียด' : 'Description'}</th>
-                  <th className="px-4 py-3 text-right">{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
+                <tr>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'วันที่' : 'Date'}</th>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ชื่อ' : 'Name'}</th>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'รายละเอียด' : 'Description'}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody>
                 {[...past].reverse().slice(0, 20).map(h => (
                   <tr key={h.id} className="hover:bg-slate-50 transition-colors text-slate-400">
-                    <td className="px-4 py-3 font-mono">
+                    <td className="border border-slate-100 px-4 py-3 font-mono">
                       {formatUtcCalendarDate(new Date(h.date), locale === 'th' ? 'th-TH-u-ca-gregory' : 'en-GB')}
                     </td>
-                    <td className="px-4 py-3">{h.name}</td>
-                    <td className="px-4 py-3 text-xs">{h.description ?? '—'}</td>
-                    <td className="px-4 py-3 text-right space-x-1">
+                    <td className="border border-slate-100 px-4 py-3">{h.name}</td>
+                    <td className="border border-slate-100 px-4 py-3 text-xs">{h.description ?? '—'}</td>
+                    <td className="border border-slate-100 px-4 py-3 text-right space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(h)}><Pencil size={15} /></Button>
                       <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(h.id)} disabled={deleting === h.id}>
                         <Trash2 size={15} className="text-red-500" />

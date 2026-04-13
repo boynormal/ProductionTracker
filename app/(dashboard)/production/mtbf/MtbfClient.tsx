@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n'
 import { Activity, Loader2, Wrench, AlertTriangle, Clock } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { cn } from '@/lib/utils/cn'
+import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
 
 interface MtbfRow {
   machineId: string
@@ -147,33 +148,35 @@ export function MtbfClient({ lines, machines }: Props) {
         <div className={showEmpty ? 'rounded-xl bg-white border py-16 text-center text-sm text-slate-400' : 'hidden'}>
           {locale === 'th' ? 'ไม่มีข้อมูลในช่วงเวลาที่เลือก' : 'No data for selected period'}
         </div>
-        <div className={showTable ? 'rounded-xl bg-white border border-slate-100 shadow-sm overflow-x-auto' : 'hidden'}>
-          <table className="w-full text-sm">
+        <div className={showTable ? 'w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm' : 'hidden'}>
+          <table className={DASHBOARD_TABLE_BASE}>
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
-                <th className="px-4 py-3 text-left">{locale === 'th' ? 'สาย' : 'Line'}</th>
-                <th className="px-4 py-3 text-left">{locale === 'th' ? 'เครื่อง' : 'Machine'}</th>
-                <th className="px-4 py-3 text-right">MTBF (hrs)</th>
-                <th className="px-4 py-3 text-right">MTTR (hrs)</th>
-                <th className="px-4 py-3 text-right">Failures</th>
-                <th className="px-4 py-3 text-right">{locale === 'th' ? 'Run Hours' : 'Run Hours'}</th>
-                <th className="px-4 py-3 text-right">{locale === 'th' ? 'Downtime (hrs)' : 'Downtime (hrs)'}</th>
+              <tr>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'สาย' : 'Line'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'เครื่อง' : 'Machine'}</th>
+                <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>MTBF (hrs)</th>
+                <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>MTTR (hrs)</th>
+                <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Failures</th>
+                <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'Run Hours' : 'Run Hours'}</th>
+                <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>
+                  {locale === 'th' ? 'Downtime (hrs)' : 'Downtime (hrs)'}
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {data.map(row => (
                 <tr key={row.machineId} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-500">{row.lineName}</td>
-                  <td className="px-4 py-3 font-medium">{row.mcNo}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="border border-slate-100 px-4 py-3 text-slate-500">{row.lineName}</td>
+                  <td className="border border-slate-100 px-4 py-3 font-medium">{row.mcNo}</td>
+                  <td className="border border-slate-100 px-4 py-3 text-right">
                     <span className={cn('font-mono font-semibold rounded px-2 py-0.5', mtbfColor(row.mtbf))}>{row.mtbf}</span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="border border-slate-100 px-4 py-3 text-right">
                     <span className={cn('font-mono font-semibold rounded px-2 py-0.5', mttrColor(row.mttr))}>{row.mttr}</span>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono">{row.failureCount}</td>
-                  <td className="px-4 py-3 text-right font-mono">{row.totalRunHours}</td>
-                  <td className="px-4 py-3 text-right font-mono text-red-500">{row.totalDowntimeHours}</td>
+                  <td className="border border-slate-100 px-4 py-3 text-right font-mono">{row.failureCount}</td>
+                  <td className="border border-slate-100 px-4 py-3 text-right font-mono">{row.totalRunHours}</td>
+                  <td className="border border-slate-100 px-4 py-3 text-right font-mono text-red-500">{row.totalDowntimeHours}</td>
                 </tr>
               ))}
             </tbody>

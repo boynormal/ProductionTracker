@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
+import { cn } from '@/lib/utils/cn'
+import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
 
 interface Props {
   sessions: any[]
@@ -160,20 +162,20 @@ export function DashboardClient({ sessions, activeSessions, unreadAlertsCount, t
             {locale === 'th' ? 'ไม่มีเครื่องที่กำลังผลิตในขณะนี้' : 'No active sessions'}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full min-w-0">
+            <table className={DASHBOARD_TABLE_BASE}>
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-xs font-medium text-slate-500">
-                  <th className="px-4 py-3 text-left">{t('machine')}</th>
-                  <th className="px-4 py-3 text-left">{t('line')}</th>
-                  <th className="px-4 py-3 text-right">{t('okQty')}</th>
-                  <th className="px-4 py-3 text-right">{t('target')}</th>
-                  <th className="px-4 py-3 text-right">Achievement</th>
-                  <th className="px-4 py-3 text-center">BD</th>
-                  <th className="px-4 py-3 text-center">NG</th>
+                <tr>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t('machine')}</th>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t('line')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Achievement</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>BD</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody>
                 {sessions.map((sess: any) => {
                   const ok      = sess.hourlyRecords.reduce((s: number, r: any) => s + r.okQty, 0)
                   const tgt     = sess.hourlyRecords.reduce((s: number, r: any) => s + r.targetQty, 0)
@@ -188,19 +190,19 @@ export function DashboardClient({ sessions, activeSessions, unreadAlertsCount, t
 
                   return (
                     <tr key={sess.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-slate-800">{machineLabel}</td>
-                      <td className="px-4 py-3 text-slate-500">{sess.line?.lineCode ?? '—'}</td>
-                      <td className="px-4 py-3 text-right font-mono">{ok.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-mono text-slate-400">{tgt.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="border border-slate-100 px-4 py-3 font-medium text-slate-800">{machineLabel}</td>
+                      <td className="border border-slate-100 px-4 py-3 text-slate-500">{sess.line?.lineCode ?? '—'}</td>
+                      <td className="border border-slate-100 px-4 py-3 text-right font-mono">{ok.toLocaleString()}</td>
+                      <td className="border border-slate-100 px-4 py-3 text-right font-mono text-slate-400">{tgt.toLocaleString()}</td>
+                      <td className="border border-slate-100 px-4 py-3 text-right">
                         <span className={`font-bold ${pct >= 100 ? 'text-green-600' : pct >= 85 ? 'text-yellow-500' : 'text-red-500'}`}>
                           {pct}%
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="border border-slate-100 px-4 py-3 text-center">
                         {hasBd ? <span className="text-red-500 font-medium">●</span> : <span className="text-slate-200">●</span>}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="border border-slate-100 px-4 py-3 text-center">
                         {ng > 0 ? <span className="text-orange-500 font-medium">{ng}</span> : <span className="text-slate-300">-</span>}
                       </td>
                     </tr>

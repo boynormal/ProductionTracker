@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CRUD_SELECT_NONE } from '@/lib/crud-select'
+import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
 
 export interface Column {
   key: string
@@ -282,41 +283,46 @@ export function CrudPage({
         </div>
       </div>
 
-      <div className="rounded-xl bg-white border border-slate-100 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
+      <div className="w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm">
+        <table className={DASHBOARD_TABLE_BASE}>
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50 text-xs font-medium text-slate-500">
-              <th className="px-4 py-3 text-left w-10">#</th>
+            <tr>
+              <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'w-10')}>#</th>
               {columns.map(col => (
-                <th key={col.key} className="px-4 py-3 text-left">{t(col.label, col.labelEn)}</th>
+                <th key={col.key} className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t(col.label, col.labelEn)}</th>
               ))}
-              {canEdit && <th className="px-4 py-3 text-right w-24">{t('จัดการ', 'Actions')}</th>}
+              {canEdit && (
+                <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'w-24 text-right')}>{t('จัดการ', 'Actions')}</th>
+              )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (canEdit ? 2 : 1)} className="py-12 text-center text-slate-400">
+                <td
+                  colSpan={columns.length + (canEdit ? 2 : 1)}
+                  className="border border-slate-100 py-12 text-center text-slate-400"
+                >
                   {t('ไม่มีข้อมูล', 'No data')}
                 </td>
               </tr>
             ) : (
               filtered.map((row, i) => (
                 <tr key={row.id ?? i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-slate-400 text-xs">{i + 1}</td>
+                  <td className="border border-slate-100 px-4 py-3 text-slate-400 text-xs">{i + 1}</td>
                   {columns.map(col => {
                     const custom = columnRenders?.[col.key]
                     return (
                       <td
                         key={col.key}
-                        className={cn('px-4 py-3 text-slate-700', col.cellClassName)}
+                        className={cn('border border-slate-100 px-4 py-3 text-slate-700', col.cellClassName)}
                       >
                         {custom ? custom(row) : String(getNestedValue(row, col.key) ?? '—')}
                       </td>
                     )
                   })}
                   {canEdit && (
-                    <td className="px-4 py-3 text-right">
+                    <td className="border border-slate-100 px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(row)} className="rounded-md p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                           <Pencil size={14} />
