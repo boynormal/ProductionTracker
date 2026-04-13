@@ -8,3 +8,7 @@ next-env.d.ts
 # รูปที่อัปโหลดจากผู้ใช้ (คงโฟลเดอร์ด้วย .gitkeep)
 public/uploads/machines/*
 !public/uploads/machines/.gitkeep
+
+# เอกสารภายในเครื่อง / งานนำเสนอ (ไม่ติดตามใน git)
+Documents/
+docs/
