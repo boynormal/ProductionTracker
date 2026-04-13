@@ -379,6 +379,17 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
   const [search, setSearch]             = useState('')
   const [loading, setLoading]           = useState(false)
   const [editingId, setEditingId]       = useState<string | null>(null)
+  /** รายละเอียดรายชั่วโมง (พนักงาน / สรุป Part / กริด) — ยุบเป็นค่าเริ่มต้น */
+  const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(() => new Set())
+
+  const toggleLineDetail = useCallback((id: string) => {
+    setExpandedLineIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const canEditRecord = !!(userRole && EDIT_ROLES.has(userRole))
 
@@ -500,20 +511,20 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
         <h1 className="text-xl font-bold text-slate-800">{t('productionHistory')}</h1>
         <p className="text-sm text-slate-500 mt-0.5">
           {locale === 'th'
-            ? 'แสดงประวัติการผลิตตามสายการผลิต — คลิกปุ่มลูกศรเพื่อดูรายละเอียดรายชั่วโมง'
-            : 'Production history by line — click the arrow button to view hourly details.'}
+            ? 'แสดงประวัติการผลิตตามสายการผลิต — คลิกลูกศรหน้าชื่อสายเพื่อขยายดูรายละเอียดรายชั่วโมง (ค่าเริ่มต้นยุบไว้)'
+            : 'Production history by line — click the chevron next to the line to expand hourly details (collapsed by default).'}
         </p>
         {canEditRecord ? (
           <p className="text-xs text-slate-400 mt-1">
             {locale === 'th'
-              ? 'หัวหน้างาน / วิศวกร / ผู้จัดการ / Admin: คลิกช่องรายชั่วโมงเพื่อแก้ไข Part, OK, Breakdown, NG และหมายเหตุ'
-              : 'Supervisor / Engineer / Manager / Admin: click an hourly cell to edit part, OK, breakdown, NG, and remark.'}
+              ? 'หัวหน้างาน / วิศวกร / ผู้จัดการ / Admin: ขยายรายละเอียดสายก่อน แล้วคลิกช่องรายชั่วโมงเพื่อแก้ไข Part, OK, Breakdown, NG และหมายเหตุ'
+              : 'Supervisor / Engineer / Manager / Admin: expand a line first, then click an hourly cell to edit part, OK, breakdown, NG, and remark.'}
           </p>
         ) : (
           <p className="text-xs text-amber-700/90 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 mt-2 inline-block">
             {locale === 'th'
-              ? 'แก้ไขย้อนหลัง: ให้หัวหน้างานขึ้นไปเปิดหน้านี้ แล้วคลิกช่องรายชั่วโมง — หรือแจ้ง Admin'
-              : 'To correct data, ask Supervisor+ to open this page and click an hourly cell, or contact Admin.'}
+              ? 'แก้ไขย้อนหลัง: ให้หัวหน้างานขึ้นไปเปิดหน้านี้ ขยายสาย แล้วคลิกช่องรายชั่วโมง — หรือแจ้ง Admin'
+              : 'To correct data, ask Supervisor+ to open this page, expand the line, then click an hourly cell, or contact Admin.'}
           </p>
         )}
       </div>
@@ -679,13 +690,45 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                 const deptName   = department?.departmentName ?? department?.departmentCode ?? null
                 const secName    = section?.sectionName ?? section?.sectionCode ?? null
 
+                const lineDetailOpen = expandedLineIds.has(lineId)
+
                 return (
                   <React.Fragment key={lineId}>
                     {/* Main row */}
                     <tr className="hover:bg-slate-50 border-b border-slate-200">
                       {/* Column: สายการผลิต */}
                       <td className="border border-slate-200 px-3 py-2">
-                        <div className="space-y-0.5">
+                        <div className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleLineDetail(lineId)}
+                            className="mt-0.5 shrink-0 rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-200/80 hover:text-slate-900"
+                            aria-expanded={lineDetailOpen}
+                            aria-label={
+                              locale === 'th'
+                                ? lineDetailOpen
+                                  ? 'ยุบรายละเอียดรายชั่วโมง'
+                                  : 'ขยายรายละเอียดรายชั่วโมง'
+                                : lineDetailOpen
+                                  ? 'Collapse hourly details'
+                                  : 'Expand hourly details'
+                            }
+                            title={
+                              locale === 'th'
+                                ? lineDetailOpen
+                                  ? 'ยุบรายละเอียดรายชั่วโมง'
+                                  : 'ขยายรายละเอียดรายชั่วโมง'
+                                : lineDetailOpen
+                                  ? 'Collapse hourly details'
+                                  : 'Expand hourly details'
+                            }
+                          >
+                            <ChevronDown
+                              className={cn('h-4 w-4 transition-transform duration-200', lineDetailOpen ? 'rotate-0' : '-rotate-90')}
+                              aria-hidden
+                            />
+                          </button>
+                          <div className="min-w-0 flex-1 space-y-0.5">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-800 text-sm">{line?.lineCode ?? '—'}</span>
                             {line?.lineName && (
@@ -711,6 +754,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                               {formatUtcCalendarDate(new Date(rawDate), locale === 'th' ? 'th-TH-u-ca-gregory' : 'en-GB')}
                             </p>
                           )}
+                          </div>
                         </div>
                       </td>
                       {/* Column: ชิ้นงาน */}
@@ -816,7 +860,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                       </td>
                     </tr>
 
-                    {/* Detail row — รายชั่วโมง */}
+                    {/* Detail row — รายชั่วโมง (ขยายเมื่อคลิกลูกศร) */}
+                    {lineDetailOpen ? (
                     <tr>
                       <td colSpan={9} className="border-x border-slate-200 bg-white p-0">
                         <div className="grid grid-cols-12 border-b border-slate-200">
@@ -967,6 +1012,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                         </div>
                       </td>
                     </tr>
+                    ) : null}
                   </React.Fragment>
                 )
               })}
