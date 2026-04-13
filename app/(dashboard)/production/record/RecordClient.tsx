@@ -28,9 +28,10 @@ const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
     problemDetail:     z.string().optional(),
   })).optional(),
   ng: z.array(z.object({
-    machineId:         z.string().min(1, t('machine')),
-    ngQty:             z.number().int().min(1),
-    problemCategoryId: z.string(),
+    /** ว่างได้ — ระบบเติมจากเครื่องเดียวในไลน์หรือ machine ของ Session */
+    machineId:         z.string().optional(),
+    ngQty:             z.coerce.number().int().min(1),
+    problemCategoryId: z.string().min(1, t('recordNgCause')),
     problemDetail:     z.string().optional(),
   })).optional(),
 })
@@ -39,6 +40,13 @@ type FormData = z.infer<ReturnType<typeof createSchema>>
 
 
 const LINE_LIST_MAX_HEIGHT = 'min(calc(2.75rem * 20), min(55vh, 70dvh))' as const
+
+function defaultMachineIdOnLine(machinesOnLine: { id: string }[], sessionMachineId: string | null | undefined): string {
+  if (machinesOnLine.length === 1) return String(machinesOnLine[0]!.id)
+  const sid = sessionMachineId?.trim()
+  if (sid && machinesOnLine.some((m) => m.id === sid)) return sid
+  return ''
+}
 
 type LineActivitySnapshot = {
   hourSlot: number
@@ -181,9 +189,6 @@ export function RecordClient({
       </button>
     </div>
   )
-  const schema = useMemo(() => createSchema(t), [t])
-
-
 
   const [liveShift, setLiveShift] = useState<'DAY' | 'NIGHT'>(() => getCurrentShift())
   const [liveSlot,  setLiveSlot]  = useState<number>(() => getCurrentHourSlot(getCurrentShift()))
@@ -209,6 +214,39 @@ export function RecordClient({
   const [creatingSession, setCreatingSession] = useState(false)
   /** สายที่เลือก (หรือ locked จาก QR) */
   const [selectedLineId, setSelectedLineId] = useState<string>(() => lockedLine?.id ?? initialLineId ?? '')
+
+  const machinesOnLine = useMemo(() => {
+    const lid = lockedLine ? lockedLine.id : selectedLineId
+    if (!lid) return []
+    return machines.filter(m => (m.lineId ?? m.line?.id) === lid)
+  }, [machines, lockedLine, selectedLineId])
+
+  const schema = useMemo(() => {
+    return createSchema(t).superRefine((val, ctx) => {
+      if (!val.hasNg) return
+      const rows = val.ng ?? []
+      if (rows.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: t('recordNgAddAtLeastOne'),
+          path: ['ng'],
+        })
+        return
+      }
+      const defaultMid = defaultMachineIdOnLine(machinesOnLine, sessionData?.machineId)
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!
+        const mid = (row.machineId ?? '').trim() || defaultMid
+        if (!mid) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('machine'),
+            path: ['ng', i, 'machineId'],
+          })
+        }
+      }
+    })
+  }, [t, machinesOnLine, sessionData?.machineId])
 
   const [lineSearch, setLineSearch] = useState('')
   const [linePanelOpen, setLinePanelOpen] = useState(false)
@@ -311,12 +349,6 @@ export function RecordClient({
       setValue('hourSlot', nextEmptySlot)
     }
   }, [watchPartId, watchHourSlot, recordedMap, nextEmptySlot, setValue])
-
-  const machinesOnLine = useMemo(() => {
-    const lid = lockedLine ? lockedLine.id : selectedLineId
-    if (!lid) return []
-    return machines.filter(m => (m.lineId ?? m.line?.id) === lid)
-  }, [machines, lockedLine, selectedLineId])
 
   /** สายที่ใช้งาน (ล็อกจาก QR หรือเลือกจาก dropdown) — logic เดียวกันทั้งสองทาง */
   const lineContextId = useMemo(
@@ -552,6 +584,17 @@ export function RecordClient({
       }
     }
 
+    const defaultNgMid = defaultMachineIdOnLine(machinesOnLine, session.machineId)
+    const ngPayload =
+      data.hasNg && (data.ng?.length ?? 0) > 0
+        ? (data.ng ?? []).map((ng) => ({
+            ngQty: ng.ngQty,
+            problemCategoryId: ng.problemCategoryId,
+            problemDetail: ng.problemDetail?.trim() || undefined,
+            machineId: (ng.machineId?.trim() || defaultNgMid) || undefined,
+          }))
+        : []
+
     setSubmitting(true)
     try {
       const res = await fetch('/api/production/records', {
@@ -565,7 +608,7 @@ export function RecordClient({
           okQty:     data.okQty,
           remark:    data.remark ?? '',
           breakdown: breakdownPayload,
-          ng:        data.hasNg ? data.ng : [],
+          ng:        ngPayload,
         }),
       })
       const text = await res.text()
@@ -1404,12 +1447,21 @@ export function RecordClient({
             </label>
             {watchHasNg && (
               <button type="button"
-                onClick={() => appendNg({ machineId: '', ngQty: 1, problemCategoryId: '' })}
+                onClick={() =>
+                  appendNg({
+                    machineId: defaultMachineIdOnLine(machinesOnLine, sessionData?.machineId),
+                    ngQty: 1,
+                    problemCategoryId: '',
+                  })
+                }
                 className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
                 <Plus size={14} /> {t('recordAdd')}
               </button>
             )}
           </div>
+          {errors.ng && typeof errors.ng === 'object' && 'message' in errors.ng && errors.ng.message ? (
+            <p className="mb-2 px-2 text-xs text-red-500">{String(errors.ng.message)}</p>
+          ) : null}
           {watchHasNg && lineContextId && machinesOnLine.length === 0 ? (
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {t('recordNoMachinesOnLine')}
