@@ -32,6 +32,10 @@ interface LineRow {
 
 const EDIT_ROLES = new Set(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
 
+/** หัวตารางหลัก — ติดด้านบนขณะเลื่อนใน main (dashboard) */
+const HISTORY_MAIN_HEAD_TH =
+  'sticky top-0 z-20 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
+
 function recordForHourSlot(records: any[], slot: number) {
   return records.find((r: any) => Number(r.hourSlot) === slot)
 }
@@ -634,37 +638,19 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
           {t('noData')}
         </div>
       ) : (
-        <div className={cn('overflow-x-auto', loading && 'opacity-60 pointer-events-none')}>
-          <table className="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
+        <div className={cn('overflow-x-auto rounded-lg shadow-sm', loading && 'opacity-60 pointer-events-none')}>
+          <table className="w-full border-collapse bg-white">
             <thead>
-              <tr className="bg-slate-100 border-b-2 border-slate-200">
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'สายการผลิต' : 'Line'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'ชิ้นงาน' : 'Part'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'รวมทั้งวัน' : 'Total'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'กะเช้า' : 'Day'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'OT เช้า' : 'Day OT'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'กะดึก' : 'Night'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'OT ดึก' : 'Night OT'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  {locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}
-                </th>
-                <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                  NG
-                </th>
+              <tr className="border-b-2 border-slate-200">
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'ชิ้นงาน' : 'Part'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'รวมทั้งวัน' : 'Total'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'กะเช้า' : 'Day'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'OT เช้า' : 'Day OT'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'OT ดึก' : 'Night OT'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>
+                <th className={HISTORY_MAIN_HEAD_TH}>NG</th>
               </tr>
             </thead>
             <tbody>
