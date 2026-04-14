@@ -53,7 +53,8 @@ Before committing:
 
 - Review `git diff` / `git diff --staged`
 - Ensure no secrets (passwords, tokens, `.env` contents) in the diff — this repo ignores `.env` / `.env.local` via `.gitignore`; do not force-add them
-- Run `npm run lint` and `npx tsc --noEmit`; run `npm run build` before merges or when changes are broad
+- Run **`npm run verify`** before merges or when changes are broad (combines `npx tsc --noEmit` and `npm run build`). After **logic changes**, also smoke-test affected behavior.
+- Run `npm run lint` on files you touch when you can keep them clean (repo-wide lint may still have legacy debt)
 
 ## Generated / Ignored Files
 
@@ -88,7 +89,7 @@ After substantive work, a short summary helps review:
 
 - [ ] One logical change (or clearly related set)
 - [ ] Message follows conventions and explains intent
-- [ ] Lint/typecheck (and build when appropriate) pass
+- [ ] `npm run verify` (or at least typecheck + build) passes when behavior or broad edits are involved
 - [ ] No secrets in the diff
 
 _Source: MIT — addyosmani/agent-skills (adapted for this repo)._

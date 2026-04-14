@@ -52,13 +52,27 @@ Use feature flags for incomplete user-visible features when merging early. Prefe
 
 ## Project verification (this repo)
 
-After each meaningful increment, prefer:
+### After any **logic / behavior change** (API, auth, calculations, DB queries, UI flow)
 
-- `npm run build` (or at least `npx tsc --noEmit` for smaller edits)
-- `npm run lint`
-- `npx tsc --noEmit`
+Run the full automated gate — do **not** merge or hand off until this passes:
 
-Run `npm test` only if a test script exists and is relevant.
+```bash
+npm run verify
+```
+
+`verify` = `npx tsc --noEmit` **then** `npm run build` (typecheck + production build). This repo has **no unit/integration test suite** in `package.json` yet; “full” automated verification here means **everything in `verify`**, **plus** a **targeted manual check** of affected screens or API paths (happy path + a regression-prone case when relevant).
+
+For **typo-only / comments / formatting** with no behavior change, `npx tsc --noEmit` alone may suffice.
+
+### Every meaningful increment
+
+Still prefer when applicable:
+
+- `npm run verify` before merge or when the change is broad
+- `npm run lint` (legacy lint debt may remain; production build skips ESLint via `next.config` — clean incrementally)
+- `npm test` only if a test script exists and is relevant
+
+CI: `.github/workflows/verify.yml` runs `npm run verify` on push/PR (set as a required check in GitHub branch protection when ready).
 
 ## Common rationalizations
 
@@ -80,7 +94,8 @@ Run `npm test` only if a test script exists and is relevant.
 ## Verification (task complete)
 
 - [ ] Each increment was verified; commits are scoped
-- [ ] `npm run build`, `npm run lint`, and `npx tsc --noEmit` pass when applicable
+- [ ] If behavior/logic changed: `npm run verify` passed **and** affected flows manually checked
+- [ ] `npm run lint` / `npx tsc --noEmit` pass when applicable (use `verify` for the full compile+build gate)
 - [ ] Feature works end-to-end as specified
 - [ ] No stray uncommitted changes intended for the task
 
