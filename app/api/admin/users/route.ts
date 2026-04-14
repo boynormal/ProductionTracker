@@ -4,10 +4,14 @@ import { auth } from '@/lib/auth'
 import { userCreateSchema } from '@/lib/validations/master'
 import { auditUserIdFromSession } from '@/lib/audit-user'
 import bcrypt from 'bcryptjs'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
+import { isPinUsedByAnotherUser } from '@/lib/user-pin-uniqueness'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const canRead = await checkPermissionForSession(session, 'api.admin.users.read', { apiPath: req.nextUrl.pathname })
+  if (!canRead) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const departmentId = searchParams.get('departmentId')
@@ -53,7 +57,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'ADMIN') {
+  const canWrite = await checkPermissionForSession(session, 'api.admin.users.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -65,6 +70,10 @@ export async function POST(req: NextRequest) {
 
   const existing = await prisma.user.findUnique({ where: { employeeCode: data.employeeCode } })
   if (existing) return NextResponse.json({ error: 'รหัสพนักงานซ้ำ' }, { status: 409 })
+
+  if (await isPinUsedByAnotherUser(data.pin)) {
+    return NextResponse.json({ error: 'รหัส PIN นี้ถูกใช้โดยผู้ใช้อื่นแล้ว' }, { status: 409 })
+  }
 
   const passwordHash = await bcrypt.hash(password, 10)
 

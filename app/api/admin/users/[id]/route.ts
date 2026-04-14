@@ -4,6 +4,8 @@ import { auth } from '@/lib/auth'
 import { userUpdateSchema } from '@/lib/validations/master'
 import { auditUserIdFromSession } from '@/lib/audit-user'
 import bcrypt from 'bcryptjs'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
+import { isPinUsedByAnotherUser } from '@/lib/user-pin-uniqueness'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -25,7 +27,8 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function PUT(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'ADMIN') {
+  const canWrite = await checkPermissionForSession(session, 'api.admin.users.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -47,6 +50,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
   if (password) {
     updateData.passwordHash = await bcrypt.hash(password, 10)
+  }
+
+  const nextPin = updateData.pin
+  if (typeof nextPin === 'string' && nextPin.trim() !== '') {
+    if (await isPinUsedByAnotherUser(nextPin, id)) {
+      return NextResponse.json({ error: 'รหัส PIN นี้ถูกใช้โดยผู้ใช้อื่นแล้ว' }, { status: 409 })
+    }
   }
 
   try {
@@ -95,7 +105,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'ADMIN') {
+  const canWrite = await checkPermissionForSession(session, 'api.admin.users.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
