@@ -5,17 +5,11 @@ import { ReportClient } from './ReportLoader'
 export default async function ReportPage() {
   await auth()
 
-  const lines = await prisma.line.findMany({ where: { isActive: true }, orderBy: { lineCode: 'asc' } })
-  const machines = await prisma.machine.findMany({
+  const sections = await prisma.section.findMany({
     where: { isActive: true },
-    select: { id: true, mcNo: true, mcName: true, lineId: true },
-    orderBy: { mcNo: 'asc' },
+    select: { id: true, sectionCode: true, sectionName: true },
+    orderBy: { sectionCode: 'asc' },
   })
 
-  return (
-    <ReportClient
-      lines={JSON.parse(JSON.stringify(lines))}
-      machines={JSON.parse(JSON.stringify(machines))}
-    />
-  )
+  return <ReportClient sections={JSON.parse(JSON.stringify(sections))} />
 }

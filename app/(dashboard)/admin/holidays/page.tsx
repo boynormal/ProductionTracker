@@ -12,5 +12,12 @@ export default async function HolidaysPage() {
     orderBy: { date: 'asc' },
   })
 
-  return <HolidaysClient holidays={JSON.parse(JSON.stringify(holidays))} />
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <HolidaysClient
+        holidays={JSON.parse(JSON.stringify(holidays))}
+        canEdit={session.user.role === 'ADMIN'}
+      />
+    </div>
+  )
 }

@@ -2,11 +2,16 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendTelegramAlert } from '@/lib/telegram'
 import { getCurrentShift, getCurrentHourSlot } from '@/lib/utils/shift'
-import { getThaiTodayUTC } from '@/lib/utils/thai-time'
+import { getThaiTodayUTC, isThaiCalendarSunday } from '@/lib/utils/thai-time'
 
 export async function GET() {
   try {
     const today = getThaiTodayUTC()
+
+    // วันอาทิตย์ = วันหยุดประจำสัปดาห์ — ไม่แจ้งเตือน missing record
+    if (isThaiCalendarSunday(today)) {
+      return NextResponse.json({ message: 'Sunday — skipped' })
+    }
 
     // ตรวจวันหยุด
     const holiday = await prisma.holiday.findFirst({

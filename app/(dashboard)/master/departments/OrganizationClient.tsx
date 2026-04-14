@@ -157,18 +157,6 @@ export function OrganizationClient({
           <Building2 size={22} className="text-blue-600" />
           {t('โครงสร้างองค์กร', 'Organization')}
         </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          {t(
-            'จัดการแผนก ฝ่าย และส่วน — ให้ตรงกับไฟล์ พนักงาน.xlsx (ชื่อแผนก, รหัสฝ่าย, ชื่อฝ่าย, รหัสส่วน, ชื่อส่วน)',
-            'Aligns with พนักงาน.xlsx columns: department_name, division_code, division_name, section_code, section_name',
-          )}
-        </p>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {t(
-            'ถ้ามีคอลัมน์รหัสแผนกในไฟล์ ระบบจะใช้ตามนั้น — ถ้าไม่มี สคริปต์นำเข้าจะสร้างรหัสจากชื่อแผนก',
-            'department_code is used when present; import may derive it from department_name if omitted.',
-          )}
-        </p>
       </div>
 
       <Tabs defaultValue="overview" className="w-full">

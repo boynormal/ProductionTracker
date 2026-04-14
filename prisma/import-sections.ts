@@ -5,10 +5,11 @@
  *   - แผ่นแรก หรือแผ่นชื่อ "Sections"
  *   - แถวแรก = หัวคอลัมน์ (ไม่สนตัวพิมพ์เล็กใหญ่)
  *
- * คอลัมน์ที่รองรับ:
- *   departmentCode, departmentName  — แผนก (สร้างถ้ายังไม่มี)
- *   divisionCode, divisionName      — ฝ่าย (สร้างถ้ายังไม่มี ต้องมีแผนก)
- *   sectionCode, sectionName          — Section (บังคับ)
+ * ให้ตรงกับ พนักงาน.xlsx (ชื่อไทยหรืออังกฤษ):
+ *   ชื่อแผนก (departmentName) — บังคับถ้ายังไม่มีรหัสแผนกและต้องสร้างแผนกใหม่
+ *   รหัสแผนก (departmentCode) — ถ้ามีใช้ตามนั้น; ถ้าไม่มีแต่มีชื่อแผนก สคริปต์สร้างรหัสจากชื่อแผนก (ไม่ชนกับของเดิม)
+ *   รหัสฝ่าย, ชื่อฝ่าย — ฝ่าย (สร้างถ้ายังไม่มีเมื่อทราบแผนก)
+ *   รหัสส่วน, ชื่อส่วน — ส่วน (บังคับ)
  *
  * Run:
  *   npm run db:import-sections
@@ -85,6 +86,40 @@ function isRowEmpty(r: Partial<RowInput>): boolean {
   return !r.sectionCode && !r.sectionName && !r.divisionCode
 }
 
+function hashFromString(s: string): string {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  return Math.abs(h).toString(16).padStart(8, '0').slice(0, 8)
+}
+
+/** สร้างรหัสแผนกจากชื่อ (เมื่อไฟล์ไม่มีคอลัมน์รหัสแผนก) */
+function slugDepartmentCodeFromName(name: string): string {
+  const s = name.trim()
+  if (!s) return ''
+  const lead = s.match(/^([\d]{2}-[\d]{3}|[\d][\d-]{2,24})/)
+  if (lead) return lead[1].slice(0, 48)
+  let slug = s
+    .replace(/\s+/g, '-')
+    .replace(/[^\u0E00-\u0E7Fa-zA-Z0-9_-]/g, '')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+  if (slug.length >= 2) return slug
+  return `AUTO-${hashFromString(s)}`
+}
+
+async function uniqueDepartmentCode(base: string): Promise<string> {
+  let candidate = base.trim() || 'DEPT'
+  for (let n = 0; n < 200; n++) {
+    const hit = await prisma.department.findUnique({
+      where: { departmentCode: candidate },
+      select: { id: true },
+    })
+    if (!hit) return candidate
+    candidate = `${base}-${n + 1}`
+  }
+  return `${base}-${hashFromString(base + Date.now())}`
+}
+
 async function main() {
   const args = process.argv.slice(2)
   if (args.includes('--template')) {
@@ -155,6 +190,8 @@ async function main() {
 
   let rowOk = 0
   const warnings: string[] = []
+  /** ชื่อแผนก (ในไฟล์) → รหัสแผนกที่ใช้ในรอบนำเข้านี้ */
+  const deptNameToCode = new Map<string, string>()
 
   for (let i = 1; i < raw.length; i++) {
     const row = raw[i] as unknown[]
@@ -173,28 +210,46 @@ async function main() {
       continue
     }
 
-    const deptCode = data.departmentCode?.trim()
-    const deptName = data.departmentName?.trim() || deptCode || '—'
+    const deptCodeRaw = data.departmentCode?.trim()
+    const deptNameRaw = data.departmentName?.trim()
     let departmentId: string | undefined
 
-    if (deptCode) {
+    const divExistingEarly = await prisma.division.findUnique({
+      where: { divisionCode },
+    })
+
+    if (deptCodeRaw) {
+      const deptName = deptNameRaw || deptCodeRaw || '—'
       const dept = await prisma.department.upsert({
-        where: { departmentCode: deptCode },
+        where: { departmentCode: deptCodeRaw },
         update: { departmentName: deptName },
-        create: { departmentCode: deptCode, departmentName: deptName },
+        create: { departmentCode: deptCodeRaw, departmentName: deptName },
       })
       departmentId = dept.id
-    } else {
-      const divExisting = await prisma.division.findUnique({
-        where: { divisionCode },
-      })
-      if (!divExisting) {
-        warnings.push(
-          `   แถว ${i + 1}: ข้าม — ไม่มี departmentCode และยังไม่มีฝ่าย ${divisionCode} ในระบบ`,
-        )
-        continue
+    } else if (deptNameRaw) {
+      let code = deptNameToCode.get(deptNameRaw)
+      if (!code) {
+        const base = slugDepartmentCodeFromName(deptNameRaw)
+        if (!base) {
+          warnings.push(`   แถว ${i + 1}: ข้าม — ไม่สามารถสร้างรหัสแผนกจากชื่อได้`)
+          continue
+        }
+        code = await uniqueDepartmentCode(base)
+        deptNameToCode.set(deptNameRaw, code)
       }
-      departmentId = divExisting.departmentId
+      const dept = await prisma.department.upsert({
+        where: { departmentCode: code },
+        update: { departmentName: deptNameRaw },
+        create: { departmentCode: code, departmentName: deptNameRaw },
+      })
+      departmentId = dept.id
+    } else if (divExistingEarly) {
+      departmentId = divExistingEarly.departmentId
+    } else {
+      warnings.push(
+        `   แถว ${i + 1}: ข้าม — ไม่มีรหัสแผนก/ชื่อแผนก และยังไม่มีฝ่าย ${divisionCode} ในระบบ`,
+      )
+      continue
     }
 
     const divName = data.divisionName?.trim() || divisionCode
@@ -202,7 +257,7 @@ async function main() {
     let division = await prisma.division.findUnique({ where: { divisionCode } })
     if (!division) {
       if (!departmentId) {
-        warnings.push(`   แถว ${i + 1}: ข้าม — ไม่สามารถสร้างฝ่ายได้ (ไม่มีแผนก)`)
+        warnings.push(`   แถว ${i + 1}: ข้าม — ไม่สามารถสร้างฝ่ายได้ (ไม่พบแผนก)`)
         continue
       }
       division = await prisma.division.create({

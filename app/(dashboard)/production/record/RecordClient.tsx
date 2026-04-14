@@ -223,9 +223,10 @@ export function RecordClient({
 
   const schema = useMemo(() => {
     return createSchema(t).superRefine((val, ctx) => {
-      if (!val.hasNg) return
       const rows = val.ng ?? []
-      if (rows.length === 0) {
+      const hasNgRows = rows.length > 0
+      if (!val.hasNg && !hasNgRows) return
+      if (hasNgRows === false) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: t('recordNgAddAtLeastOne'),
@@ -365,7 +366,6 @@ export function RecordClient({
     (lineId: string) => {
       setSelectedLineId(lineId)
       setValue('partId', '')
-      setSessionData(null)
       setLineSearch('')
       setLinePanelOpen(false)
     },
@@ -559,7 +559,7 @@ export function RecordClient({
       problemCategoryId: string
       problemDetail?: string
     }[] = []
-    if (data.hasBreakdown && (data.breakdown?.length ?? 0) > 0) {
+    if ((data.breakdown?.length ?? 0) > 0) {
       const shiftType = (session.shiftType ?? 'DAY') as 'DAY' | 'NIGHT'
       const intervals = buildBreakdownIntervalsFromSlotMinutes(
         recordDateIso,
@@ -586,7 +586,7 @@ export function RecordClient({
 
     const defaultNgMid = defaultMachineIdOnLine(machinesOnLine, session.machineId)
     const ngPayload =
-      data.hasNg && (data.ng?.length ?? 0) > 0
+      (data.ng?.length ?? 0) > 0
         ? (data.ng ?? []).map((ng) => ({
             ngQty: ng.ngQty,
             problemCategoryId: ng.problemCategoryId,
@@ -771,11 +771,11 @@ export function RecordClient({
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 sm:px-6 lg:px-8">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-        <h1 className="text-xl font-bold text-slate-800">{t('productionRecord')}</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
+        <h1 className="text-3xl font-bold text-slate-800 sm:text-4xl">{t('productionRecord')}</h1>
+        <p className="mt-1.5 text-base text-slate-500 sm:text-lg">
           {shiftConfig.label} / {recordDateIso.split('-').reverse().join('/')}
           / {t('recordBreak')} {shiftConfig.breakTime}
           {sessionData && <span className="text-green-600 ml-2">Session {t('recordSessionActive')}</span>}
@@ -785,7 +785,7 @@ export function RecordClient({
       </div>
 
       {lockedLine ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/90 px-4 py-3 text-sm text-indigo-950 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/90 px-4 py-3.5 text-base text-indigo-950 shadow-sm">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Factory className="h-4 w-4 shrink-0 text-indigo-600" />
             <span className="font-medium">
@@ -797,7 +797,7 @@ export function RecordClient({
             const snap = lineActivityByLineId[lockedLine.id]
             const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
             return (
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-xs">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-sm">
                 <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
                   {meta.slotLabel}
                 </span>
@@ -809,22 +809,22 @@ export function RecordClient({
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
-        <div className="rounded-xl bg-white border border-slate-100 p-4 shadow-sm space-y-3">
-          <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-4 sm:p-5">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-700">
             <Factory size={15} />
             {t('recordLineMachinePart')}
           </h3>
 
           {!lockedLine ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <label className="mb-0.5 block text-xs font-medium text-slate-600">{t('recordSection')}</label>
+                <label className="mb-1 block text-sm font-medium text-slate-600">{t('recordSection')}</label>
                 <select
                   value={selectedSectionId}
                   onChange={(e) => handleSectionChange(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition-shadow focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base outline-none transition-shadow focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="">
                     {locale === 'th' ? '— เลือก Section —' : '— Select section —'}
@@ -841,7 +841,7 @@ export function RecordClient({
               </div>
 
               <div>
-                <label className="mb-0.5 block text-xs font-medium text-slate-600">{t('line')}</label>
+                <label className="mb-1 block text-sm font-medium text-slate-600">{t('line')}</label>
                 <div ref={linePickerRef} className="relative">
                   <div className="relative">
                     <Search
@@ -871,7 +871,7 @@ export function RecordClient({
                           : t('recordSelectSectionFirst')
                       }
                       autoComplete="off"
-                      className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-10 text-sm outline-none transition-shadow focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70"
+                      className="w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-10 pr-11 text-base outline-none transition-shadow focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70"
                       aria-expanded={linePanelOpen}
                     />
                     <button
@@ -919,14 +919,14 @@ export function RecordClient({
                                 setLinePanelOpen(false)
                               }}
                               className={cn(
-                                'flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50',
+                                'flex w-full items-center gap-3 px-3 py-2.5 text-left text-base transition-colors hover:bg-slate-50',
                                 selectedLineId === ln.id && 'bg-blue-50 text-blue-900',
                               )}
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="truncate font-medium text-slate-800">{ln.lineCode}</div>
                               </div>
-                              <div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-xs">
+                              <div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-sm">
                                 <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
                                   {meta.slotLabel}
                                 </span>
@@ -941,10 +941,11 @@ export function RecordClient({
                   </ul>
                 ) : null}
               </div>
+              </div>
 
               {selectedLineId && selectedLine ? (
-                <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/90 px-3 py-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-800/85">
+                <div className="mt-2 rounded-xl border border-blue-200 bg-blue-50/90 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-800/85">
                     {t('selected')} — {t('line')}
                   </p>
                   <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
@@ -955,7 +956,7 @@ export function RecordClient({
                       const snap = lineActivityByLineId[selectedLineId]
                       const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
                       return (
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-xs">
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-sm">
                           <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
                             {meta.slotLabel}
                           </span>
@@ -967,16 +968,15 @@ export function RecordClient({
                   </div>
                 </div>
               ) : null}
-              </div>
             </div>
           ) : null}
 
           {lineContextId && lineTargetsForContext.length > 0 ? (
             <div>
-              <label className="mb-0.5 block text-xs font-medium text-slate-600">{t('part')}</label>
+              <label className="mb-1 block text-sm font-medium text-slate-600">{t('part')}</label>
               <select
                 {...register('partId')}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base outline-none focus:border-blue-400"
               >
                 <option value="">{t('recordSelectPart')}</option>
                 {lineTargetsForContext.map((pt: any) => (
@@ -985,31 +985,31 @@ export function RecordClient({
                   </option>
                 ))}
               </select>
-              {errors.partId && <p className="mt-1 text-xs text-red-500">{errors.partId.message}</p>}
+              {errors.partId && <p className="mt-1 text-sm text-red-500">{errors.partId.message}</p>}
             </div>
           ) : null}
 
           {selectedTarget?.part && (
-            <div className="rounded-lg border border-blue-200 bg-gradient-to-b from-blue-50/90 to-slate-50/80 p-3 space-y-2">
-              <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-blue-800/80">
+            <div className="rounded-xl border border-blue-200 bg-gradient-to-b from-blue-50/90 to-slate-50/80 p-4 space-y-3 sm:p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-800/80">
                 {t('recordSelectedPartDetails')}
               </p>
-              <div className="grid gap-1.5 text-sm sm:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+              <div className="grid gap-2 text-base sm:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
                 <div className="min-w-0">
-                  <span className="block text-xs text-slate-500">Part No.</span>
+                  <span className="block text-sm text-slate-500">Part No.</span>
                   <span className="block truncate font-mono font-bold text-slate-900">{selectedTarget.part.partNo || '-'}</span>
                 </div>
                 <div>
-                  <span className="block text-xs text-slate-500">SAMCO</span>
+                  <span className="block text-sm text-slate-500">SAMCO</span>
                   <span className="block font-mono font-semibold text-slate-900">{selectedTarget.part.partSamco}</span>
                 </div>
                 <div className="col-span-full grid grid-cols-2 gap-x-3 gap-y-0.5">
                   <div className="min-w-0">
-                    <span className="block text-xs text-slate-500">{t('recordPartName')}</span>
+                    <span className="block text-sm text-slate-500">{t('recordPartName')}</span>
                     <span className="block leading-snug text-slate-800">{selectedTarget.part.partName}</span>
                   </div>
                   <div className="min-w-0">
-                    <span className="block text-xs text-slate-500">{t('customer')}</span>
+                    <span className="block text-sm text-slate-500">{t('customer')}</span>
                     <span className="block leading-snug text-slate-800 break-words">
                       {selectedTarget.part.customer
                         ? [selectedTarget.part.customer.customerCode, selectedTarget.part.customer.customerName].filter(Boolean).join(' / ') || '-'
@@ -1034,7 +1034,7 @@ export function RecordClient({
         </div>
 
         {!watchPartId && (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-500">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center text-base text-slate-500 sm:text-lg">
             {!lineContextId
               ? t('recordPickLineFirst')
               : lineTargetsForContext.length === 0
@@ -1046,13 +1046,13 @@ export function RecordClient({
         {watchPartId && (
         <>
 
-        <div className="rounded-xl bg-white border border-slate-100 p-5 shadow-sm">
+        <div className="rounded-xl bg-white border border-slate-100 p-4 shadow-sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <h3 className="text-base font-semibold text-slate-700 flex items-center gap-2 sm:text-lg">
               <Clock size={15} />
               {t('recordSelectHourSlot')}
             </h3>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-green-700 font-medium bg-green-50 px-2 py-0.5 rounded">
                 {t('recordTotalOk')}:&nbsp;
                 <span className="font-bold tabular-nums">
@@ -1067,7 +1067,7 @@ export function RecordClient({
               </span>
             </div>
           </div>
-          <p className="text-[11px] text-slate-500 mb-2">
+          <p className="mb-2 text-sm text-slate-500">
             {locale === 'th'
               ? t('recordSlotLegend')
               : 'Under each slot: OK for selected part (green) or another part in the same hour (amber, one part per hour).'}
@@ -1111,7 +1111,7 @@ export function RecordClient({
                   disabled={disabled}
                   onClick={() => !disabled && setValue('hourSlot', s.slot)}
                   className={cn(
-                    'flex flex-col items-center rounded-lg border py-1.5 px-1 text-xs font-medium transition-all relative min-h-[4.25rem]',
+                    'flex flex-col items-center rounded-lg border py-1.5 px-1 text-xs sm:text-sm font-medium transition-all relative min-h-[4.75rem]',
                     rec
                       ? 'border-green-400 bg-green-50 text-green-700 opacity-60 cursor-default'
                       : disabled && 'opacity-30 cursor-not-allowed',
@@ -1124,16 +1124,16 @@ export function RecordClient({
                           : '',
                   )}
                 >
-                  <span className="font-bold leading-none">{s.slot}</span>
-                  <span className="text-[9px] opacity-70 mt-0.5">{s.time}</span>
+                  <span className="text-base font-bold leading-none sm:text-lg">{s.slot}</span>
+                  <span className="mt-0.5 text-[10px] opacity-70 sm:text-xs">{s.time}</span>
                   {otherPart && anyRec ? (
-                    <span className="text-[8px] leading-tight mt-0.5 text-amber-800/80 font-medium">
+                    <span className="mt-0.5 text-[10px] leading-tight font-medium text-amber-800/80 sm:text-xs">
                       SAMCO {anyRec.partSamco ?? '?'}
                     </span>
                   ) : null}
                   <span
                     className={cn(
-                      'text-[11px] font-bold mt-1 leading-none min-h-[16px] flex w-full items-end justify-center tabular-nums',
+                      'mt-1 flex min-h-[18px] w-full items-end justify-center text-xs font-bold leading-none tabular-nums sm:text-sm',
                       isActive && !rec ? 'text-blue-100' : otherPart && anyRec ? 'text-amber-900' : 'text-green-800',
                     )}
                   >
@@ -1162,7 +1162,7 @@ export function RecordClient({
             })}
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
             <span className="flex items-center gap-1 text-orange-500">
               <Coffee size={11} />
               {locale === 'th' ? `${t('recordBreak')} ${shiftConfig.breakTime}` : `Break ${shiftConfig.breakTime}`}
@@ -1187,7 +1187,7 @@ export function RecordClient({
 
           {shiftConfig.slots.some(s => s.isOvertime) && (
             <div className="mt-3">
-              <p className="text-xs text-orange-500 mb-1.5 font-medium">OT</p>
+              <p className="mb-1.5 text-sm font-medium text-orange-500">OT</p>
               <div className="grid grid-cols-3 gap-2">
                 {shiftConfig.slots.filter(s => s.isOvertime).map(s => {
                   const timeBlocked = s.slot < minSlot || s.slot > liveSlot
@@ -1227,7 +1227,7 @@ export function RecordClient({
                       disabled={disabled}
                       onClick={() => !disabled && setValue('hourSlot', s.slot)}
                       className={cn(
-                        'flex flex-col items-center rounded-lg border py-1.5 px-1 text-xs font-medium transition-all relative min-h-[4.25rem]',
+                        'flex flex-col items-center rounded-lg border py-1.5 px-1 text-xs sm:text-sm font-medium transition-all relative min-h-[4.75rem]',
                         rec
                           ? 'border-green-400 bg-green-50 text-green-700 opacity-60 cursor-default'
                           : disabled && 'opacity-30 cursor-not-allowed',
@@ -1240,16 +1240,16 @@ export function RecordClient({
                               : '',
                       )}
                     >
-                      <span className="font-bold leading-none">{s.slot}</span>
-                      <span className="text-[9px] opacity-70 mt-0.5">{s.time}</span>
+                      <span className="text-base font-bold leading-none sm:text-lg">{s.slot}</span>
+                      <span className="mt-0.5 text-[10px] opacity-70 sm:text-xs">{s.time}</span>
                       {otherPart && anyRec ? (
-                        <span className="text-[8px] leading-tight mt-0.5 text-amber-800/80 font-medium">
+                        <span className="mt-0.5 text-[10px] leading-tight font-medium text-amber-800/80 sm:text-xs">
                           SAMCO {anyRec.partSamco ?? '?'}
                         </span>
                       ) : null}
                       <span
                         className={cn(
-                          'text-[11px] font-bold mt-1 leading-none min-h-[16px] flex w-full items-end justify-center tabular-nums',
+                          'mt-1 flex min-h-[18px] w-full items-end justify-center text-xs font-bold leading-none tabular-nums sm:text-sm',
                           isActive && !rec ? 'text-orange-100' : otherPart && anyRec ? 'text-amber-900' : 'text-green-800',
                         )}
                       >
@@ -1282,19 +1282,19 @@ export function RecordClient({
           <div className="rounded-xl border border-green-300 bg-green-50 px-4 py-3 flex items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-2 min-w-0">
               <CheckCircle2 size={16} className="shrink-0 text-green-600" />
-              <p className="text-sm text-green-800">
+              <p className="text-base text-green-800">
                 <span className="font-semibold">
                   {locale === 'th' ? `ชั่วโมงที่ ${watchHourSlot} บันทึกแล้ว` : `Slot ${watchHourSlot} already recorded`}
                 </span>
                 {' — '}
                 <span className="tabular-nums">{selectedSlotRec.okQty.toLocaleString()} pcs</span>
                 {selectedSlotRec.hasBreakdown && (
-                  <span className="ml-1.5 inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700 font-medium">
+                  <span className="ml-1.5 inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-sm text-red-700 font-medium">
                     <Wrench size={10} /> BD
                   </span>
                 )}
                 {selectedSlotRec.hasNg && (
-                  <span className="ml-1 inline-flex items-center gap-0.5 rounded bg-orange-100 px-1.5 py-0.5 text-xs text-orange-700 font-medium">
+                  <span className="ml-1 inline-flex items-center gap-0.5 rounded bg-orange-100 px-1.5 py-0.5 text-sm text-orange-700 font-medium">
                     <XCircle size={10} /> NG
                   </span>
                 )}
@@ -1304,12 +1304,12 @@ export function RecordClient({
               <button
                 type="button"
                 onClick={() => setValue('hourSlot', nextEmptySlot!)}
-                className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
               >
                 {locale === 'th' ? `→ ชั่วโมง ${nextEmptySlot}` : `→ Slot ${nextEmptySlot}`}
               </button>
             ) : (
-              <span className="shrink-0 text-xs text-green-700 font-medium">
+              <span className="shrink-0 text-sm font-medium text-green-700">
                 {locale === 'th' ? 'บันทึกครบทุกชั่วโมงแล้ว ✓' : 'All slots recorded ✓'}
               </span>
             )}
@@ -1317,9 +1317,9 @@ export function RecordClient({
         )}
 
         {/* OK Qty */}
-        <div className={cn('rounded-xl bg-white border border-slate-100 p-5 shadow-sm', selectedSlotRec && 'opacity-40 pointer-events-none select-none')}>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            {t('okQty')} <span className="text-xs font-normal text-slate-400">({t('recordHour')} {watchHourSlot} / {slotTime})</span>
+        <div className={cn('rounded-xl border border-slate-100 bg-white p-4 shadow-sm', selectedSlotRec && 'opacity-40 pointer-events-none select-none')}>
+          <label className="mb-2 block text-base font-semibold text-slate-700 sm:text-lg">
+            {t('okQty')} <span className="text-sm font-normal text-slate-400">({t('recordHour')} {watchHourSlot} / {slotTime})</span>
           </label>
           <input
             type="number"
@@ -1328,39 +1328,40 @@ export function RecordClient({
             placeholder="0"
             className="w-full rounded-lg border border-slate-200 px-4 py-3 text-center text-2xl font-bold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           />
-          {errors.okQty && <p className="mt-1 text-xs text-red-500">{errors.okQty.message}</p>}
+          {errors.okQty && <p className="mt-1 text-sm text-red-500">{errors.okQty.message}</p>}
           {selectedTarget && (
-            <p className="mt-2 text-center text-xs text-slate-400">
+            <p className="mt-2 text-center text-sm text-slate-400">
               {t('target')}: {selectedTarget.piecesPerHour} pcs/hr / {t('actual')}: {watch('okQty') || 0} pcs
             </p>
           )}
         </div>
 
         {/* Breakdown */}
-        <div className="rounded-xl bg-white border border-slate-100 p-5 shadow-sm">
+        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" {...register('hasBreakdown')} className="rounded" />
-              <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 text-base font-semibold text-slate-700">
                 <Wrench size={14} className="text-red-500" />
                 {t('breakdown')}
               </span>
             </label>
-            {watchHasBreakdown && (
-              <button type="button"
-                onClick={() => appendBd({ machineId: '', breakTimeMin: 10, problemCategoryId: '' })}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-                <Plus size={14} /> {t('recordAdd')}
-              </button>
-            )}
+            <button type="button"
+              onClick={() => {
+                setValue('hasBreakdown', true)
+                appendBd({ machineId: '', breakTimeMin: 10, problemCategoryId: '' })
+              }}
+              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
+              <Plus size={14} /> {t('recordAdd')}
+            </button>
           </div>
           {watchHasBreakdown && lineContextId && machinesOnLine.length === 0 ? (
-            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               {t('recordNoMachinesOnLine')}
             </div>
           ) : null}
           {watchHasBreakdown ? (
-            <p className="mb-3 text-[11px] leading-snug text-slate-600">{t('recordBreakdownMinutesRule')}</p>
+            <p className="mb-3 text-sm leading-snug text-slate-600">{t('recordBreakdownMinutesRule')}</p>
           ) : null}
           {watchHasBreakdown && bdFields.map((field, i) => (
             <div key={field.id} className="mb-3 rounded-lg border border-red-100 bg-red-50 p-3 space-y-2">
@@ -1369,10 +1370,10 @@ export function RecordClient({
                 return (
                   <>
               <div>
-                <label className="text-xs text-slate-500">{t('machine')}</label>
+                <label className="text-sm text-slate-500">{t('machine')}</label>
                 <select
                   {...register(`breakdown.${i}.machineId`)}
-                  className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-red-400"
+                  className="w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400"
                 >
                   <option value="">
                     {locale === 'th' ? '— เลือกเครื่องจักร —' : '— Select machine —'}
@@ -1385,11 +1386,11 @@ export function RecordClient({
                   ))}
                 </select>
                 {breakdownError?.machineId?.message ? (
-                  <p className="mt-1 text-[11px] text-red-500">{String(breakdownError.machineId.message)}</p>
+                  <p className="mt-1 text-sm text-red-500">{String(breakdownError.machineId.message)}</p>
                 ) : null}
               </div>
               <div>
-                <label className="text-xs text-slate-500">
+                <label className="text-sm text-slate-500">
                   {t('timeMinutes')}
                   <span className="ml-1 font-normal text-slate-400">
                     ({locale === 'th' ? `ชม. ${watchHourSlot} เริ่ม ${slotTime}` : `slot ${watchHourSlot} @ ${slotTime}`})
@@ -1400,24 +1401,24 @@ export function RecordClient({
                   min={1}
                   max={60}
                   {...register(`breakdown.${i}.breakTimeMin`, { valueAsNumber: true })}
-                  className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-red-400"
+                  className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-red-400"
                 />
                 {breakdownError?.breakTimeMin?.message ? (
-                  <p className="mt-1 text-[11px] text-red-500">{String(breakdownError.breakTimeMin.message)}</p>
+                  <p className="mt-1 text-sm text-red-500">{String(breakdownError.breakTimeMin.message)}</p>
                 ) : null}
-                <p className="mt-1 text-[10px] text-slate-500">{t('recordBreakdownRowsConsecutiveHint')}</p>
+                <p className="mt-1 text-xs text-slate-500">{t('recordBreakdownRowsConsecutiveHint')}</p>
               </div>
               <div>
-                  <label className="text-xs text-slate-500">{t('cause')}</label>
+                  <label className="text-sm text-slate-500">{t('cause')}</label>
                   <select {...register(`breakdown.${i}.problemCategoryId`)}
-                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-red-400">
+                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-red-400">
                     <option value="">{t('recordSelectCause')}</option>
                     {breakdownCategories.map(c => (
                       <option key={c.id} value={c.id}>{c.code} / {c.name}</option>
                     ))}
                   </select>
                   {breakdownError?.problemCategoryId?.message ? (
-                    <p className="mt-1 text-[11px] text-red-500">{String(breakdownError.problemCategoryId.message)}</p>
+                    <p className="mt-1 text-sm text-red-500">{String(breakdownError.problemCategoryId.message)}</p>
                   ) : null}
               </div>
               <div>
@@ -1436,7 +1437,7 @@ export function RecordClient({
         </div>
 
         {/* NG */}
-        <div className="rounded-xl bg-white border border-slate-100 p-5 shadow-sm">
+        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" {...register('hasNg')} className="rounded" />
@@ -1445,35 +1446,34 @@ export function RecordClient({
                 NG
               </span>
             </label>
-            {watchHasNg && (
-              <button type="button"
-                onClick={() =>
-                  appendNg({
-                    machineId: defaultMachineIdOnLine(machinesOnLine, sessionData?.machineId),
-                    ngQty: 1,
-                    problemCategoryId: '',
-                  })
-                }
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-                <Plus size={14} /> {t('recordAdd')}
-              </button>
-            )}
+            <button type="button"
+              onClick={() => {
+                setValue('hasNg', true)
+                appendNg({
+                  machineId: defaultMachineIdOnLine(machinesOnLine, sessionData?.machineId),
+                  ngQty: 1,
+                  problemCategoryId: '',
+                })
+              }}
+              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
+              <Plus size={14} /> {t('recordAdd')}
+            </button>
           </div>
           {errors.ng && typeof errors.ng === 'object' && 'message' in errors.ng && errors.ng.message ? (
             <p className="mb-2 px-2 text-xs text-red-500">{String(errors.ng.message)}</p>
           ) : null}
           {watchHasNg && lineContextId && machinesOnLine.length === 0 ? (
-            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               {t('recordNoMachinesOnLine')}
             </div>
           ) : null}
           {watchHasNg && ngFields.map((field, i) => (
             <div key={field.id} className="mb-3 rounded-lg border border-orange-100 bg-orange-50 p-3 space-y-2">
               <div>
-                <label className="text-xs text-slate-500">{t('machine')}</label>
+                <label className="text-sm text-slate-500">{t('machine')}</label>
                 <select
                   {...register(`ng.${i}.machineId`)}
-                  className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-orange-400"
+                  className="w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400"
                 >
                   <option value="">
                     {locale === 'th' ? '— เลือกเครื่องจักร —' : '— Select machine —'}
@@ -1486,19 +1486,19 @@ export function RecordClient({
                   ))}
                 </select>
                 {errors.ng?.[i]?.machineId?.message ? (
-                  <p className="mt-1 text-[11px] text-red-500">{String(errors.ng[i]!.machineId!.message)}</p>
+                  <p className="mt-1 text-sm text-red-500">{String(errors.ng[i]!.machineId!.message)}</p>
                 ) : null}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs text-slate-500">{t('ngQty')}</label>
+                  <label className="text-sm text-slate-500">{t('ngQty')}</label>
                   <input type="number" min={1} {...register(`ng.${i}.ngQty`, { valueAsNumber: true })}
-                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-orange-400" />
+                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400" />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500">{t('recordNgCause')}</label>
+                  <label className="text-sm text-slate-500">{t('recordNgCause')}</label>
                   <select {...register(`ng.${i}.problemCategoryId`)}
-                    className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-orange-400">
+                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400">
                     <option value="">{t('recordSelect')}</option>
                     {ngCategories.map(c => (
                       <option key={c.id} value={c.id}>{c.code} / {c.name}</option>
@@ -1507,8 +1507,8 @@ export function RecordClient({
                 </div>
               </div>
               <input {...register(`ng.${i}.problemDetail`)} placeholder={t('detailsMore')}
-                className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none" />
-              <button type="button" onClick={() => removeNg(i)} className="text-xs text-orange-400 hover:text-orange-600 flex items-center gap-1">
+                className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none" />
+              <button type="button" onClick={() => removeNg(i)} className="flex items-center gap-1 text-sm text-orange-400 hover:text-orange-600">
                 <Minus size={12} /> {t('recordRemove')}
               </button>
             </div>

@@ -1,0 +1,198 @@
+/* Holidays admin — FullCalendar layout */
+.holidays-calendar-card {
+  container-type: inline-size;
+  container-name: holidays-cal;
+}
+
+.holidays-fc-wrap {
+  width: 100%;
+  overflow: visible;
+}
+
+.holidays-fc-wrap .fc {
+  height: auto;
+  font-family: inherit;
+  color: rgb(15 23 42);
+}
+
+.holidays-fc-wrap .fc-theme-standard .fc-scrollgrid,
+.holidays-fc-wrap .fc-theme-standard td,
+.holidays-fc-wrap .fc-theme-standard th {
+  border-color: rgb(226 232 240);
+}
+
+.holidays-fc-wrap .fc-theme-standard .fc-scrollgrid {
+  border-radius: 1rem;
+  overflow: visible;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255);
+}
+
+.holidays-fc-wrap .fc-col-header-cell {
+  background: rgb(248 250 252);
+}
+
+.holidays-fc-wrap .fc-col-header-cell-cushion {
+  display: block;
+  padding: 0.85rem 0.5rem;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgb(100 116 139);
+  text-decoration: none;
+}
+
+.holidays-fc-wrap .fc-daygrid-body,
+.holidays-fc-wrap .fc-scrollgrid-sync-table {
+  width: 100% !important;
+}
+
+.holidays-fc-wrap .fc-daygrid-day-frame {
+  min-height: 6.4rem;
+  background: rgb(255 255 255);
+  padding: 0.45rem 0.35rem 0.35rem;
+}
+
+.holidays-fc-wrap .fc-daygrid-day[data-holiday-name] .fc-daygrid-day-frame {
+  padding-bottom: 0.5rem;
+}
+
+.holidays-fc-wrap .fc-daygrid-day-top {
+  justify-content: flex-end;
+  padding-top: 0.15rem;
+}
+
+.holidays-fc-wrap .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: rgb(15 23 42);
+  text-decoration: none;
+}
+
+.holidays-fc-wrap .fc-day-other .fc-daygrid-day-number {
+  color: rgb(148 163 184);
+  opacity: 0.65;
+}
+
+.holidays-fc-wrap .fc-day-today {
+  background: rgb(239 246 255) !important;
+}
+
+.holidays-fc-wrap .fc-day-today .fc-daygrid-day-number {
+  background: rgb(59 130 246);
+  color: rgb(255 255 255);
+}
+
+.holidays-fc-wrap .fc-daygrid-day-events {
+  margin: 0;
+  min-height: 0;
+}
+
+.holidays-fc-wrap .fc-daygrid-day-bottom,
+.holidays-fc-wrap .fc-daygrid-event-harness {
+  display: none;
+}
+
+.holidays-fc-wrap .fc-daygrid-day.fc-day-other {
+  background: rgb(248 250 252);
+}
+
+.holidays-fc-wrap .fc-daygrid-day:hover .holidays-fc-day-inner {
+  background: rgb(248 250 252);
+}
+
+.holidays-fc-wrap .fc-daygrid-day:hover {
+  background: rgb(248 250 252);
+}
+
+.holidays-fc-wrap .fc-daygrid-day.is-sunday .fc-daygrid-day-number {
+  color: rgb(180 83 9);
+}
+
+.holidays-fc-wrap .fc-daygrid-day.is-holiday .fc-daygrid-day-number {
+  color: rgb(185 28 28);
+}
+
+.holidays-fc-wrap .fc-daygrid-day.is-holiday:not(.fc-day-today) {
+  background: rgb(254 242 242);
+}
+
+.holidays-fc-wrap .fc-daygrid-day.is-holiday .fc-daygrid-day-top::after,
+.holidays-fc-wrap .fc-daygrid-day.is-sunday .fc-daygrid-day-top::before {
+  content: '';
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.8rem;
+  border-radius: 9999px;
+}
+
+.holidays-fc-wrap .fc-daygrid-day.is-sunday .fc-daygrid-day-top::before {
+  margin-right: auto;
+  background: rgb(251 191 36);
+}
+
+.holidays-fc-wrap .fc-daygrid-day.is-holiday .fc-daygrid-day-top::after {
+  margin-left: 0.35rem;
+  background: rgb(239 68 68);
+}
+
+.holidays-fc-holiday-label {
+  position: absolute;
+  left: 0.45rem;
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-20%);
+  display: -webkit-box;
+  overflow: hidden;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: rgb(71 85 105);
+  pointer-events: none;
+}
+
+.holidays-fc-wrap .fc-daygrid-day {
+  cursor: pointer;
+}
+
+.holidays-fc-wrap .fc-daygrid-day.fc-day-disabled {
+  cursor: default;
+}
+
+@container holidays-cal (max-width: 640px) {
+  .holidays-fc-wrap .fc-col-header-cell-cushion {
+    font-size: 0.9rem;
+    padding-block: 0.7rem;
+  }
+
+  .holidays-fc-wrap .fc-daygrid-day-frame,
+  .holidays-fc-wrap .fc-daygrid-day-frame {
+    min-height: 5.25rem;
+  }
+
+  .holidays-fc-wrap .fc-daygrid-day-number {
+    min-width: 1.7rem;
+    min-height: 1.7rem;
+    font-size: 1.2rem;
+  }
+
+  .holidays-fc-holiday-label {
+    font-size: 0.6rem;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
+  }
+}

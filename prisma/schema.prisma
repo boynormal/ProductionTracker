@@ -22,6 +22,7 @@ model Department {
   divisions Division[]
   users     User[]
 
+  @@index([isActive])
   @@map("departments")
 }
 
@@ -38,6 +39,8 @@ model Division {
   sections   Section[]
   users      User[]
 
+  @@index([departmentId])
+  @@index([isActive])
   @@map("divisions")
 }
 
@@ -54,6 +57,8 @@ model Section {
   users    User[]
   lines    Line[]
 
+  @@index([divisionId])
+  @@index([isActive])
   @@map("sections")
 }
 
@@ -90,6 +95,11 @@ model User {
   auditLogs     AuditLog[]
   capableParts  UserPartCapability[]
 
+  @@index([departmentId])
+  @@index([divisionId])
+  @@index([sectionId])
+  @@index([isActive])
+  @@index([role, isActive])
   @@map("users")
 }
 
@@ -123,6 +133,8 @@ model Line {
   linePartTargets  LinePartTarget[]
 
   @@index([divisionCode])
+  @@index([sectionId])
+  @@index([isActive])
   @@map("lines")
 }
 
@@ -136,6 +148,7 @@ model Customer {
 
   parts Part[]
 
+  @@index([isActive])
   @@map("customers")
 }
 
@@ -189,6 +202,8 @@ model Machine {
   scanLogs      ScanLog[]
   images        MachineImage[]
 
+  @@index([lineId])
+  @@index([isActive])
   @@map("machines")
 }
 
@@ -203,6 +218,7 @@ model MachineImage {
 
   machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
 
+  @@index([machineId, isPrimary])
   @@map("machine_images")
 }
 
@@ -223,6 +239,8 @@ model Part {
   hourlyRecords     HourlyRecord[]
   userCapabilities  UserPartCapability[]
 
+  @@index([customerId])
+  @@index([isActive])
   @@map("parts")
 }
 
@@ -258,6 +276,8 @@ model MachinePartTarget {
   part    Part    @relation(fields: [partId], references: [id])
 
   @@unique([machineId, partId, effectiveDate])
+  @@index([machineId, isActive])
+  @@index([partId, isActive])
   @@map("machine_part_targets")
 }
 
@@ -280,6 +300,8 @@ model LinePartTarget {
   part Part @relation(fields: [partId], references: [id])
 
   @@unique([lineId, partId, effectiveDate])
+  @@index([lineId, isActive])
+  @@index([partId, isActive])
   @@map("line_part_targets")
 }
 
@@ -296,6 +318,8 @@ model ProblemCategory {
   breakdownLogs BreakdownLog[]
   ngLogs        NgLog[]
 
+  @@index([type, isActive])
+  @@index([isActive])
   @@map("problem_categories")
 }
 
@@ -332,6 +356,11 @@ model ProductionSession {
   modelChanges  ModelChange[]
 
   @@unique([sessionDate, shiftType, lineId])
+  @@index([sessionDate, shiftType, status])
+  @@index([lineId, status, sessionDate])
+  @@index([lineId, sessionDate, shiftType, status])
+  @@index([machineId, sessionDate])
+  @@index([status, sessionDate])
   @@map("production_sessions")
 }
 
@@ -373,6 +402,10 @@ model HourlyRecord {
   modelChange   ModelChange?
 
   @@unique([sessionId, hourSlot])
+  @@index([machineId])
+  @@index([operatorId])
+  @@index([partId])
+  @@index([recordTime])
   @@map("hourly_records")
 }
 
@@ -393,6 +426,9 @@ model BreakdownLog {
   machine         Machine?        @relation(fields: [machineId], references: [id])
   problemCategory ProblemCategory @relation(fields: [problemCategoryId], references: [id])
 
+  @@index([hourlyRecordId])
+  @@index([problemCategoryId])
+  @@index([machineId, breakdownEnd])
   @@map("breakdown_logs")
 }
 
@@ -411,6 +447,9 @@ model NgLog {
   machine         Machine?        @relation(fields: [machineId], references: [id])
   problemCategory ProblemCategory @relation(fields: [problemCategoryId], references: [id])
 
+  @@index([hourlyRecordId])
+  @@index([machineId])
+  @@index([problemCategoryId])
   @@map("ng_logs")
 }
 
@@ -428,6 +467,7 @@ model ModelChange {
   session      ProductionSession @relation(fields: [sessionId], references: [id])
   hourlyRecord HourlyRecord      @relation(fields: [hourlyRecordId], references: [id])
 
+  @@index([sessionId])
   @@map("model_changes")
 }
 
@@ -460,6 +500,8 @@ model ScanLog {
   machine Machine @relation(fields: [machineId], references: [id])
   user    User?   @relation(fields: [userId], references: [id])
 
+  @@index([machineId, scannedAt])
+  @@index([userId, scannedAt])
   @@map("scan_logs")
 }
 
@@ -480,6 +522,9 @@ model Notification {
   sentVia    String?
   createdAt  DateTime         @default(now())
 
+  @@index([isRead, createdAt])
+  @@index([type, createdAt])
+  @@index([sessionId])
   @@map("notifications")
 }
 
@@ -503,6 +548,7 @@ model Holiday {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
+  @@index([isActive])
   @@map("holidays")
 }
 
@@ -518,5 +564,8 @@ model AuditLog {
 
   user User? @relation(fields: [userId], references: [id])
 
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
   @@map("audit_logs")
 }

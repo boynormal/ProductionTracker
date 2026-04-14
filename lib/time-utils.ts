@@ -159,6 +159,14 @@ export function formatThaiDateUTCISO(d: Date): string {
 }
 
 /**
+ * Whether `date` is Sunday on the Thai business calendar.
+ * Stored session/holiday dates use UTC midnight; weekday follows `getUTCDay()` (0 = Sunday).
+ */
+export function isThaiCalendarSunday(date: Date): boolean {
+  return date.getUTCDay() === 0
+}
+
+/**
  * Current Thai wall clock as `YYYY-MM-DDTHH:mm` string — for `<input type="datetime-local">` defaults.
  * Do NOT persist verbatim as UTC; pass through `parseThaiLocalToUtc` on the server.
  */
