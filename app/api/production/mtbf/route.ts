@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const machineId = searchParams.get('machineId')
   const lineId    = searchParams.get('lineId')
+  const divisionCode = searchParams.get('divisionCode')
   const startDate = searchParams.get('startDate')
   const endDate   = searchParams.get('endDate')
 
@@ -40,7 +41,10 @@ export async function GET(req: NextRequest) {
     })
   } else {
     machines = await prisma.machine.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(divisionCode ? { line: { divisionCode } } : {}),
+      },
       select: { id: true, mcNo: true, line: { select: { lineCode: true } } },
       orderBy: { mcNo: 'asc' },
     })
@@ -48,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   const data = await Promise.all(
     machines.map(async (m) => {
-      const result = await calcMtbfMttr(m.id, start, endDay)
+      const result = await calcMtbfMttr(m.id, start, end)
       return {
         machineId:          m.id,
         mcNo:               m.mcNo,

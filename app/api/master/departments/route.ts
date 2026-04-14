@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { departmentSchema } from '@/lib/validations/master'
-
-function canEditOrg(role: string | undefined) {
-  return role === 'ADMIN' || role === 'MANAGER'
-}
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 export async function GET() {
   const session = await auth()
@@ -26,7 +23,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canEditOrg(session.user.role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

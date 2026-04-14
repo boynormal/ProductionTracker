@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { sessionUpdateSchema } from '@/lib/validations/production'
 import { auditUserIdFromSession } from '@/lib/audit-user'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -37,6 +38,8 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const canWrite = await checkPermissionForSession(session, 'api.production.session.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const body   = await req.json()
@@ -81,9 +84,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const role = session.user.role
-  if (!['ADMIN', 'MANAGER'].includes(role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.production.session.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

@@ -54,6 +54,7 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [roleFilter, setRole] = useState('all')
+  const [pinFilter, setPinFilter] = useState<'all' | 'with_pin' | 'without_pin'>('all')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState(emptyForm)
@@ -70,14 +71,24 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
     [sections, form.divisionId],
   )
 
+  const missingPinCount = useMemo(
+    () => users.filter((u) => u.isActive && (!u.pin || String(u.pin).trim().length === 0)).length,
+    [users],
+  )
+
   const filtered = users.filter(u => {
     const matchRole = roleFilter === 'all' || u.role === roleFilter
+    const hasPin = Boolean(u.pin && String(u.pin).trim().length > 0)
+    const matchPin =
+      pinFilter === 'all' ||
+      (pinFilter === 'with_pin' && hasPin) ||
+      (pinFilter === 'without_pin' && !hasPin)
     const q = search.toLowerCase()
     const matchSearch = !q ||
       u.employeeCode.toLowerCase().includes(q) ||
       u.firstName.toLowerCase().includes(q) ||
       u.lastName.toLowerCase().includes(q)
-    return matchRole && matchSearch
+    return matchRole && matchPin && matchSearch
   })
 
   const filteredPartsForPicker = useMemo(() => {
@@ -235,6 +246,20 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
           <option value="all">{locale === 'th' ? 'ทุก Role' : 'All Roles'}</option>
           {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
+        <select
+          value={pinFilter}
+          onChange={e => setPinFilter(e.target.value as 'all' | 'with_pin' | 'without_pin')}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+        >
+          <option value="all">{locale === 'th' ? 'PIN ทั้งหมด' : 'All PIN status'}</option>
+          <option value="with_pin">{locale === 'th' ? 'มี PIN' : 'Has PIN'}</option>
+          <option value="without_pin">{locale === 'th' ? 'ยังไม่มี PIN' : 'No PIN yet'}</option>
+        </select>
+        <span className="self-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+          {locale === 'th'
+            ? `ยังไม่มี PIN (Active): ${missingPinCount}`
+            : `Active users without PIN: ${missingPinCount}`}
+        </span>
         <span className="self-center text-sm text-slate-500">{filtered.length} / {users.length}</span>
       </div>
 
@@ -249,6 +274,7 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
               <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'แผนก' : 'Department'}</th>
               <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ฝ่าย' : 'Division'}</th>
               <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'ส่วน' : 'Section'}</th>
+              <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>PIN</th>
               <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Role</th>
               <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{locale === 'th' ? 'สถานะ' : 'Status'}</th>
               <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'จัดการ' : 'Actions'}</th>
@@ -264,6 +290,11 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
                 <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.department?.departmentName ?? '—'}</td>
                 <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.division?.divisionName ?? '—'}</td>
                 <td className="border border-slate-100 px-4 py-3 text-xs text-slate-500">{u.section?.sectionName ?? '—'}</td>
+                <td className="border border-slate-100 px-4 py-3 text-center">
+                  <Badge variant={u.pin ? 'success' : 'secondary'}>
+                    {u.pin ? (locale === 'th' ? 'มี PIN' : 'Has PIN') : (locale === 'th' ? 'ไม่มี PIN' : 'No PIN')}
+                  </Badge>
+                </td>
                 <td className="border border-slate-100 px-4 py-3">
                   <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', roleBadge[u.role])}>{u.role}</span>
                 </td>
@@ -285,7 +316,7 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={10} className="border border-slate-100 py-8 text-center text-sm text-slate-400">
+                <td colSpan={11} className="border border-slate-100 py-8 text-center text-sm text-slate-400">
                   {locale === 'th' ? 'ไม่พบข้อมูล' : 'No users found'}
                 </td>
               </tr>

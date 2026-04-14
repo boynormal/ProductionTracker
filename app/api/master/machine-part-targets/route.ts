@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { machinePartTargetSchema } from '@/lib/validations/master'
 import { parseThaiCalendarDateUtc } from '@/lib/time-utils'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -45,7 +46,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['ADMIN', 'ENGINEER'].includes(session.user.role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

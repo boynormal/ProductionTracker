@@ -11,17 +11,36 @@ import { useDashboardNav, type DashboardNavItem } from '@/components/layout/useD
 
 type Props = {
   userRole?: string
+  allowedMenuKeys?: string[]
 }
 
 function groupChildActive(pathname: string, item: Extract<DashboardNavItem, { kind: 'group' }>) {
   return item.children.some((c) => pathname.startsWith(c.href))
 }
 
-export function NavRail({ userRole }: Props) {
+export function NavRail({ userRole, allowedMenuKeys = [] }: Props) {
   const pathname = usePathname()
   const { t } = useI18n()
   const { items } = useDashboardNav()
   const [flyout, setFlyout] = useState<string | null>(null)
+  const allowedSet = new Set(allowedMenuKeys)
+
+  const canAccess = useCallback(
+    (permissionKey?: string) => !permissionKey || allowedSet.size === 0 || allowedSet.has(permissionKey),
+    [allowedSet],
+  )
+
+  const visibleItems = items
+    .map((item) => {
+      if (item.kind === 'link') {
+        if (!canAccess(item.permissionKey)) return null
+        return item
+      }
+      const children = item.children.filter((c) => canAccess(c.permissionKey))
+      if (children.length === 0) return null
+      return { ...item, children }
+    })
+    .filter(Boolean) as DashboardNavItem[]
 
   const closeFlyout = useCallback(() => setFlyout(null), [])
 
@@ -38,7 +57,7 @@ export function NavRail({ userRole }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [flyout, closeFlyout])
 
-  const openGroup = items.find(
+  const openGroup = visibleItems.find(
     (i): i is Extract<DashboardNavItem, { kind: 'group' }> =>
       i.kind === 'group' && i.key === flyout,
   )
@@ -60,7 +79,7 @@ export function NavRail({ userRole }: Props) {
         </div>
 
         <nav className="flex flex-1 flex-col items-center gap-1 py-3">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             if (item.kind === 'group' && item.roles && userRole && !item.roles.includes(userRole)) {
               return null
             }

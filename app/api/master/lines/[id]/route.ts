@@ -5,6 +5,7 @@ import { sanitizeCrudSelectIds } from '@/lib/crud-select'
 import { divisionCodeForSectionId } from '@/lib/line-division'
 import { sectionWhereMasterList } from '@/lib/org-filters'
 import { lineSchema } from '@/lib/validations/master'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -30,7 +31,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function PUT(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['ADMIN', 'ENGINEER'].includes(session.user.role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -89,10 +91,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['ADMIN', 'ENGINEER'].includes(session.user.role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

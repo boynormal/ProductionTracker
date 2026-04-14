@@ -11,9 +11,10 @@ type Props = {
   children: React.ReactNode
   userName?: string
   userRole?: string
+  allowedMenuKeys?: string[]
 }
 
-export function DashboardShell({ children, userName, userRole }: Props) {
+export function DashboardShell({ children, userName, userRole, allowedMenuKeys = [] }: Props) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -33,7 +34,7 @@ export function DashboardShell({ children, userName, userRole }: Props) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <NavRail userRole={userRole} />
+      <NavRail userRole={userRole} allowedMenuKeys={allowedMenuKeys} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header userName={userName} userRole={userRole} />
@@ -42,12 +43,13 @@ export function DashboardShell({ children, userName, userRole }: Props) {
         </main>
       </div>
 
-      <MobileBottomNav onOpenMenu={() => setMobileMenuOpen(true)} />
+      <MobileBottomNav onOpenMenu={() => setMobileMenuOpen(true)} allowedMenuKeys={allowedMenuKeys} />
       <MobileNavDrawer
         open={mobileMenuOpen}
         onClose={closeMobileMenu}
         userName={userName}
         userRole={userRole}
+        allowedMenuKeys={allowedMenuKeys}
       />
     </div>
   )

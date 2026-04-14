@@ -8,12 +8,9 @@ import {
   isAllowedMachineImageMime,
   writeMachineImageFile,
 } from '@/lib/machine-image-storage'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 type Params = { params: Promise<{ id: string }> }
-
-function canEdit(role: string | undefined) {
-  return role === 'ADMIN' || role === 'ENGINEER'
-}
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await auth()
@@ -34,7 +31,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canEdit(session.user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id: machineId } = await params
   const machine = await prisma.machine.findUnique({ where: { id: machineId }, select: { id: true } })

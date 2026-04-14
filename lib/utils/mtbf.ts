@@ -20,7 +20,7 @@ export interface MtbfResult {
 export async function calcMtbfMttr(
   machineId: string,
   startDate: Date,
-  endDate: Date,
+  endExclusiveDate: Date,
 ): Promise<MtbfResult> {
   // หา lineId ของเครื่องนี้
   const machine = await prisma.machine.findUnique({
@@ -33,7 +33,7 @@ export async function calcMtbfMttr(
       where: {
         lineId:      machine?.lineId ?? '__none__',
         status:      'COMPLETED',
-        sessionDate: { gte: startDate, lte: endDate },
+        sessionDate: { gte: startDate, lt: endExclusiveDate },
       },
       select: { totalHours: true },
     }),
@@ -45,7 +45,7 @@ export async function calcMtbfMttr(
         hourlyRecord: {
           session: {
             status:      'COMPLETED',
-            sessionDate: { gte: startDate, lte: endDate },
+            sessionDate: { gte: startDate, lt: endExclusiveDate },
           },
         },
       },
@@ -61,7 +61,7 @@ export async function calcMtbfMttr(
 
   return {
     machineId,
-    period: { start: startDate, end: endDate },
+    period: { start: startDate, end: endExclusiveDate },
     totalAvailableHr: round2(totalAvailableHr),
     totalDowntimeHr:  round2(totalDowntimeHr),
     totalUptimeHr:    round2(totalUptimeHr),

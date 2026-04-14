@@ -3,10 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { holidaySchema } from '@/lib/validations/master'
 import { auditUserIdFromSession } from '@/lib/audit-user'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const canRead = await checkPermissionForSession(session, 'api.admin.holidays.read', { apiPath: req.nextUrl.pathname })
+  if (!canRead) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const holidays = await prisma.holiday.findMany({
     orderBy: { date: 'desc' },
@@ -18,7 +21,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'ADMIN') {
+  const canWrite = await checkPermissionForSession(session, 'api.admin.holidays.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

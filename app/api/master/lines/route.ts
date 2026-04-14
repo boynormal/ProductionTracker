@@ -5,6 +5,7 @@ import { sanitizeCrudSelectIds } from '@/lib/crud-select'
 import { divisionCodeForSectionId } from '@/lib/line-division'
 import { sectionWhereMasterList } from '@/lib/org-filters'
 import { lineSchema } from '@/lib/validations/master'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -53,7 +54,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['ADMIN', 'ENGINEER'].includes(session.user.role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

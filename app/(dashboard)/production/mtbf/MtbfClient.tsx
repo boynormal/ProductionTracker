@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { Activity, Loader2, Wrench, AlertTriangle, Clock } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { cn } from '@/lib/utils/cn'
-import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
+import { DASHBOARD_TABLE_BASE, DASHBOARD_TABLE_WRAP, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
 
 interface MtbfRow {
   machineId: string
@@ -19,7 +19,8 @@ interface MtbfRow {
 }
 
 interface Props {
-  lines: { id: string; lineCode: string }[]
+  divisions: { divisionCode: string; divisionName: string }[]
+  lines: { id: string; lineCode: string; divisionCode?: string | null }[]
   machines: { id: string; mcNo: string; mcName: string; lineId: string }[]
 }
 
@@ -35,20 +36,48 @@ function mttrColor(val: number) {
   return 'text-red-600 bg-red-50'
 }
 
-export function MtbfClient({ lines, machines }: Props) {
+export function MtbfClient({ divisions, lines, machines }: Props) {
   const { locale } = useI18n()
+  const [divisionFilter, setDivisionFilter] = useState('all')
   const [lineFilter, setLineFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [data, setData] = useState<MtbfRow[]>([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const hasFilterInteractedRef = useRef(false)
 
-  const handleCalculate = async () => {
+  const isDateMissing = !dateFrom || !dateTo
+  const isRangeInvalid = !isDateMissing && dateFrom > dateTo
+  const canCalculate = !loading && !isDateMissing && !isRangeInvalid
+
+  const filteredLines = useMemo(
+    () => lines.filter((line) => divisionFilter === 'all' || line.divisionCode === divisionFilter),
+    [divisionFilter, lines],
+  )
+
+  useEffect(() => {
+    if (lineFilter !== 'all' && !filteredLines.some((line) => line.id === lineFilter)) {
+      setLineFilter('all')
+    }
+  }, [filteredLines, lineFilter])
+
+  const fetchReport = async () => {
+    if (isDateMissing) {
+      setValidationError(locale === 'th' ? 'กรุณาเลือกวันที่เริ่มต้นและวันที่สิ้นสุด' : 'Please select both start and end date')
+      return
+    }
+    if (isRangeInvalid) {
+      setValidationError(locale === 'th' ? 'วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด' : 'Start date must be earlier than or equal to end date')
+      return
+    }
+    setValidationError(null)
     setLoading(true)
     try {
       const params = new URLSearchParams({ startDate: dateFrom, endDate: dateTo })
       if (lineFilter !== 'all') params.set('lineId', lineFilter)
+      else if (divisionFilter !== 'all') params.set('divisionCode', divisionFilter)
       const res = await fetch(`/api/production/mtbf?${params}`)
       const json = await res.json()
       setData(json.data ?? [])
@@ -57,6 +86,19 @@ export function MtbfClient({ lines, machines }: Props) {
       setLoading(false)
     }
   }
+
+  const handleCalculate = async () => {
+    hasFilterInteractedRef.current = true
+    await fetchReport()
+  }
+
+  useEffect(() => {
+    if (!hasFilterInteractedRef.current) return
+    void fetchReport()
+    // Intentionally only auto-refresh on division/line changes.
+    // Date changes still require explicit Calculate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionFilter, lineFilter])
 
   const avgMtbf = data.length ? +(data.reduce((s, r) => s + r.mtbf, 0) / data.length).toFixed(2) : 0
   const avgMttr = data.length ? +(data.reduce((s, r) => s + r.mttr, 0) / data.length).toFixed(2) : 0
@@ -80,11 +122,19 @@ export function MtbfClient({ lines, machines }: Props) {
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white border border-slate-100 p-4 shadow-sm">
         <div>
+          <label className="text-xs text-slate-500 block mb-1">{locale === 'th' ? 'ฝ่าย' : 'Division'}</label>
+          <select value={divisionFilter} onChange={e => { hasFilterInteractedRef.current = true; setDivisionFilter(e.target.value) }}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400">
+            <option value="all">{locale === 'th' ? 'ทุกฝ่าย' : 'All Divisions'}</option>
+            {divisions.map(d => <option key={d.divisionCode} value={d.divisionCode}>{d.divisionCode} - {d.divisionName}</option>)}
+          </select>
+        </div>
+        <div>
           <label className="text-xs text-slate-500 block mb-1">{locale === 'th' ? 'สาย' : 'Line'}</label>
-          <select value={lineFilter} onChange={e => setLineFilter(e.target.value)}
+          <select value={lineFilter} onChange={e => { hasFilterInteractedRef.current = true; setLineFilter(e.target.value) }}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400">
             <option value="all">{locale === 'th' ? 'ทุกสาย' : 'All Lines'}</option>
-            {lines.map(l => <option key={l.id} value={l.id}>{l.lineCode}</option>)}
+            {filteredLines.map(l => <option key={l.id} value={l.id}>{l.lineCode}</option>)}
           </select>
         </div>
         <div>
@@ -100,7 +150,7 @@ export function MtbfClient({ lines, machines }: Props) {
         <button
           type="button"
           onClick={handleCalculate}
-          disabled={loading}
+          disabled={!canCalculate}
           className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           <span className="inline-flex h-4 w-4 items-center justify-center" aria-hidden>
@@ -109,6 +159,11 @@ export function MtbfClient({ lines, machines }: Props) {
           <span>{locale === 'th' ? 'คำนวณ' : 'Calculate'}</span>
         </button>
       </div>
+      {validationError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {validationError}
+        </div>
+      ) : null}
 
       {/* Summary Cards */}
       {fetched && (
@@ -148,8 +203,8 @@ export function MtbfClient({ lines, machines }: Props) {
         <div className={showEmpty ? 'rounded-xl bg-white border py-16 text-center text-sm text-slate-400' : 'hidden'}>
           {locale === 'th' ? 'ไม่มีข้อมูลในช่วงเวลาที่เลือก' : 'No data for selected period'}
         </div>
-        <div className={showTable ? 'w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm' : 'hidden'}>
-          <table className={DASHBOARD_TABLE_BASE}>
+        <div className={showTable ? DASHBOARD_TABLE_WRAP : 'hidden'}>
+          <table className={cn(DASHBOARD_TABLE_BASE, 'min-w-[56rem]')}>
             <thead>
               <tr>
                 <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'สาย' : 'Line'}</th>

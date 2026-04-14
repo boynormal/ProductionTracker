@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getOperatorContextFromApiRequest, getOperatorIdFromApiRequest } from '@/lib/operator-auth'
+import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { isUserEligibleForPart } from '@/lib/user-part-eligibility'
 import { auditUserIdFromDbUserId } from '@/lib/audit-user'
 import { z } from 'zod'
 import { getCurrentShift, getCurrentHourSlot } from '@/lib/utils/shift'
 import { parseThaiCalendarDateUtc, dayEndExclusiveUTC, parseThaiLocalToUtc } from '@/lib/time-utils'
+import { checkPermission } from '@/lib/permissions/guard'
 
 const schema = z.object({
   sessionId:      z.string(),
@@ -122,8 +123,24 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const operatorId = await getOperatorIdFromApiRequest(req)
-    if (!operatorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const operatorCtx = await getOperatorContextFromApiRequest(req)
+    if (!operatorCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const operatorId = operatorCtx.operatorId
+
+    if (operatorCtx.source === 'nextauth') {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: operatorId },
+        select: { role: true, sectionId: true },
+      })
+      if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      const canWrite = await checkPermission({
+        userId: operatorId,
+        role: dbUser.role,
+        permissionKey: 'api.production.record.write',
+        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
+      })
+      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const body   = await req.json()
     const parsed = schema.safeParse(body)

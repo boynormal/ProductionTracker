@@ -4,8 +4,7 @@ import { auth } from '@/lib/auth'
 import { auditUserIdFromSession } from '@/lib/audit-user'
 import { parseThaiLocalToUtc } from '@/lib/time-utils'
 import { z } from 'zod'
-
-const EDIT_ROLES = ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] as const
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 const updateSchema = z.object({
   okQty: z.number().int().min(0).optional(),
   remark: z.string().optional(),
@@ -101,8 +100,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const role = session.user.role
-    if (!role || !EDIT_ROLES.includes(role as (typeof EDIT_ROLES)[number])) {
+    const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
+    if (!canWrite) {
       return NextResponse.json(
         { error: 'แก้ไขได้เฉพาะหัวหน้างาน / วิศวกร / ผู้จัดการ / Admin' },
         { status: 403 },
@@ -277,8 +276,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = session.user.role
-  if (!['ADMIN', 'MANAGER', 'ENGINEER'].includes(role)) {
+  const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

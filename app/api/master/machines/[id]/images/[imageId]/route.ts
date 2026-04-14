@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { deleteMachineImageFileIfLocal } from '@/lib/machine-image-storage'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 type Params = { params: Promise<{ id: string; imageId: string }> }
-
-function canEdit(role: string | undefined) {
-  return role === 'ADMIN' || role === 'ENGINEER'
-}
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canEdit(session.user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id: machineId, imageId } = await params
   const body = await req.json().catch(() => ({}))
@@ -34,10 +32,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ data: updated })
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canEdit(session.user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const canWrite = await checkPermissionForSession(session, 'api.master.write', { apiPath: req.nextUrl.pathname })
+  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id: machineId, imageId } = await params
   const img = await prisma.machineImage.findFirst({

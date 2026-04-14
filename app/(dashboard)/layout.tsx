@@ -5,14 +5,20 @@ import { prisma } from '@/lib/prisma'
 import { getOperatorIdFromCookies } from '@/lib/operator-auth'
 import { ScanOperatorBar } from '@/components/layout/ScanOperatorBar'
 import { DashboardShell } from '@/components/layout/DashboardShell'
+import { getAllowedMenuKeysForUser } from '@/lib/permissions/guard'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   const allowLineQr = (await headers()).get('x-allow-record-line-qr') === '1'
 
   if (session) {
+    const allowedMenuKeys = await getAllowedMenuKeysForUser(session.user.id, session.user.role)
     return (
-      <DashboardShell userName={session.user.name ?? undefined} userRole={session.user.role ?? undefined}>
+      <DashboardShell
+        userName={session.user.name ?? undefined}
+        userRole={session.user.role ?? undefined}
+        allowedMenuKeys={allowedMenuKeys}
+      >
         {children}
       </DashboardShell>
     )

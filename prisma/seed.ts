@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { seedPermissions } from './seed-permissions'
 
 const prisma = new PrismaClient()
 
@@ -158,6 +159,9 @@ async function main() {
   console.log('✅ Seed completed!')
   console.log('   Admin:    ADMIN001 / admin1234')
   console.log('   Operator: 1-68176 / operator123 (PIN: 1234)')
+
+  await seedPermissions(prisma)
+  console.log('✅ Permissions seeded from catalog')
 }
 
 main()

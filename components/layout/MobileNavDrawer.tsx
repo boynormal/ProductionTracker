@@ -14,13 +14,27 @@ type Props = {
   onClose: () => void
   userName?: string
   userRole?: string
+  allowedMenuKeys?: string[]
 }
 
-export function MobileNavDrawer({ open, onClose, userName, userRole }: Props) {
+export function MobileNavDrawer({ open, onClose, userName, userRole, allowedMenuKeys = [] }: Props) {
   const { t } = useI18n()
   const pathname = usePathname()
   const { items } = useDashboardNav()
   const [openGroups, setOpenGroups] = useState<string[]>(['production', 'master'])
+  const allowedSet = new Set(allowedMenuKeys)
+
+  const visibleItems = items
+    .map((item) => {
+      if (item.kind === 'link') {
+        if (item.permissionKey && allowedSet.size > 0 && !allowedSet.has(item.permissionKey)) return null
+        return item
+      }
+      const children = item.children.filter((c) => !c.permissionKey || allowedSet.size === 0 || allowedSet.has(c.permissionKey))
+      if (children.length === 0) return null
+      return { ...item, children }
+    })
+    .filter(Boolean) as DashboardNavItem[]
 
   const toggle = (key: string) =>
     setOpenGroups((p) => (p.includes(key) ? p.filter((x) => x !== key) : [...p, key]))
@@ -60,7 +74,7 @@ export function MobileNavDrawer({ open, onClose, userName, userRole }: Props) {
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             if (item.kind === 'group' && item.roles && userRole && !item.roles.includes(userRole)) {
               return null
             }

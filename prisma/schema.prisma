@@ -93,7 +93,13 @@ model User {
   hourlyRecords HourlyRecord[]
   scanLogs      ScanLog[]
   auditLogs     AuditLog[]
+  systemLogs    SystemLog[]
   capableParts  UserPartCapability[]
+  rolePermissionChanges      RolePermission[]       @relation("RolePermissionCreatedBy")
+  permissionScopesTargeted   PermissionScope[]      @relation("PermissionScopeTargetUser")
+  permissionScopesCreated    PermissionScope[]      @relation("PermissionScopeCreatedBy")
+  permissionOverridesTarget  UserPermissionOverride[] @relation("PermissionOverrideUser")
+  permissionOverridesCreated UserPermissionOverride[] @relation("PermissionOverrideCreatedBy")
 
   @@index([departmentId])
   @@index([divisionId])
@@ -109,6 +115,23 @@ enum UserRole {
   ENGINEER
   MANAGER
   ADMIN
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum PermissionScopeType {
+  GLOBAL
+  DEPARTMENT
+  DIVISION
+  SECTION
+  LINE
+  MACHINE
+  SHIFT
+  MENU
+  API
 }
 
 // ===============================
@@ -536,6 +559,12 @@ enum NotificationType {
   SYSTEM
 }
 
+enum LogSeverity {
+  INFO
+  WARN
+  ERROR
+}
+
 // ===============================
 // SYSTEM
 // ===============================
@@ -568,4 +597,118 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model SystemLog {
+  id        String      @id @default(cuid())
+  userId    String?
+  source    String
+  category  String?
+  severity  LogSeverity @default(INFO)
+  message   String
+  details   Json?
+  traceId   String?
+  path      String?
+  method    String?
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([severity, createdAt])
+  @@index([source, createdAt])
+  @@index([userId, createdAt])
+  @@map("system_logs")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  resource    String?
+  action      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+  scopes          PermissionScope[]
+  userOverrides   UserPermissionOverride[]
+
+  @@index([isActive])
+  @@index([resource, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String           @id @default(cuid())
+  role         UserRole
+  permissionId String
+  effect       PermissionEffect @default(ALLOW)
+  createdById  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("RolePermissionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([role, permissionId])
+  @@index([permissionId])
+  @@index([role, effect])
+  @@map("role_permissions")
+}
+
+model PermissionScope {
+  id           String              @id @default(cuid())
+  permissionId String
+  targetRole   UserRole?
+  targetUserId String?
+  scopeType    PermissionScopeType
+  scopeValue   String?
+  shiftType    ShiftType?
+  effect       PermissionEffect    @default(ALLOW)
+  expiresAt    DateTime?
+  createdById  String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  targetUser User?      @relation("PermissionScopeTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("PermissionScopeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([permissionId])
+  @@index([targetRole])
+  @@index([targetUserId])
+  @@index([scopeType, scopeValue])
+  @@index([shiftType])
+  @@index([expiresAt])
+  @@map("permission_scopes")
+}
+
+model UserPermissionOverride {
+  id           String              @id @default(cuid())
+  userId       String
+  permissionId String
+  effect       PermissionEffect
+  scopeType    PermissionScopeType @default(GLOBAL)
+  scopeValue   String?
+  shiftType    ShiftType?
+  reason       String?
+  expiresAt    DateTime?
+  createdById  String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  user       User       @relation("PermissionOverrideUser", fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("PermissionOverrideCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([permissionId])
+  @@index([scopeType, scopeValue])
+  @@index([shiftType])
+  @@index([expiresAt])
+  @@index([effect])
+  @@map("user_permission_overrides")
 }
