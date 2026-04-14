@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import useSWR from 'swr'
 import { format, subDays } from 'date-fns'
-import { BarChart3, Loader2, Users, Package, Cog, Search } from 'lucide-react'
+import { BarChart3, Loader2, Users, Package, Cog, Search, Download } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { getOeeBg } from '@/lib/utils/oee'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -15,6 +15,10 @@ import {
   DASHBOARD_TABLE_WRAP,
   DASHBOARD_TH_STICKY_SOFT,
 } from '@/lib/dashboard-sticky-table-classes'
+import {
+  MAX_PRODUCTION_REPORT_RANGE_DAYS,
+  isProductionReportRangeAllowed,
+} from '@/lib/constants/production-reports'
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -73,15 +77,26 @@ export function ReportClient({ sections }: Props) {
     return p.toString()
   }, [dateFrom, dateTo, sectionFilter, granularity])
 
-  const { data, error, isLoading, isValidating } = useSWR(`/api/production/reports?${qs}`, fetcher, {
+  const rangeOk =
+    granularity === 'month' || isProductionReportRangeAllowed(dateFrom, dateTo)
+
+  const swrKey = rangeOk ? `/api/production/reports?${qs}` : null
+  const { data, error, isLoading, isValidating } = useSWR(swrKey, fetcher, {
     keepPreviousData: true,
   })
 
-  const byOperator = data?.byOperator ?? []
-  const byPart = data?.byPart ?? []
-  const byMachine = data?.byMachine ?? []
-  const operatorMonthMatrix = data?.operatorMonthMatrix ?? null
-  const apiError = data?.error ?? error?.message
+  const payload = rangeOk ? data : undefined
+  const byOperator = payload?.byOperator ?? []
+  const byPart = payload?.byPart ?? []
+  const byLine = payload?.byLine ?? []
+  const operatorMonthMatrix = payload?.operatorMonthMatrix ?? null
+  const rangeError =
+    !rangeOk && granularity === 'day'
+      ? th
+        ? `ช่วงวันที่ยาวเกิน ${MAX_PRODUCTION_REPORT_RANGE_DAYS} วัน — แบ่งดูทีละไม่เกิน 1 ปีต่อครั้ง`
+        : `Date range exceeds ${MAX_PRODUCTION_REPORT_RANGE_DAYS} days — use at most one year per request`
+      : null
+  const apiError = rangeError ?? payload?.error ?? error?.message
 
   const filteredByOperator = useMemo(
     () =>
@@ -118,14 +133,69 @@ export function ReportClient({ sections }: Props) {
   const periodLabel = granularity === 'month' ? (th ? 'เดือน' : 'Month') : th ? 'วันที่' : 'Date'
 
   const fetchFailed = Boolean(error)
-  const hasPayload = data != null && !fetchFailed
+  const hasPayload = payload != null && !fetchFailed
   const operatorsReportEmpty =
     granularity === 'month'
       ? (operatorMonthMatrix?.rows?.length ?? 0) === 0
       : byOperator.length === 0
   const allEmpty =
-    hasPayload && operatorsReportEmpty && byPart.length === 0 && byMachine.length === 0
-  const showLoadingBlock = isLoading && !data && !fetchFailed
+    hasPayload && operatorsReportEmpty && byPart.length === 0 && byLine.length === 0
+  const showLoadingBlock = isLoading && !payload && !fetchFailed
+
+  const exportExcel = async () => {
+    if (!payload) return
+    const XLSX = await import('xlsx')
+    const wb = XLSX.utils.book_new()
+    const nowStamp = format(new Date(), 'yyyyMMdd_HHmm')
+
+    // Sheet 1: Operators
+    if (granularity === 'month' && filteredOperatorMatrix) {
+      const dayCols = Array.from({ length: filteredOperatorMatrix.daysInMonth }, (_, i) => i + 1)
+      const header = [th ? 'รหัสพนักงาน' : 'Employee Code', th ? 'ชื่อพนักงาน' : 'Operator', ...dayCols.map(String)]
+      const rows = filteredOperatorMatrix.rows.map((row: any) => [
+        row.employeeCode,
+        row.name,
+        ...row.cells.map((c: any) =>
+          c.parts.length
+            ? c.parts.map((p: any) => `${p.partSamco} (${p.okQty.toLocaleString()} ${th ? 'ชิ้น' : 'pcs'})`).join('\n')
+            : '',
+        ),
+      ])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, 'Operators')
+    } else {
+      const header = [th ? 'ชื่อพนักงาน' : 'Operator', th ? 'รหัส' : 'Code', 'Part', periodLabel, th ? 'OK' : 'OK Qty']
+      const rows = filteredByOperator.map((r: any) => [r.name, r.employeeCode, `${r.partSamco} - ${r.partName}`, r.period, r.okQty])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, 'Operators')
+    }
+
+    // Sheet 2: Parts
+    {
+      const header = [th ? 'Part Samco' : 'Part Samco', th ? 'ชื่อ Part' : 'Part Name', periodLabel, th ? 'OK' : 'OK Qty']
+      const rows = byPart.map((r: any) => [r.partSamco, r.partName, r.period, r.okQty])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, 'Parts')
+    }
+
+    // Sheet 3: Lines
+    {
+      const header = [th ? 'ไลน์' : 'Line', periodLabel, 'OEE%', 'Avail%', 'Perf%', 'Qual%', th ? 'OK' : 'OK Qty']
+      const rows = byLine.map((r: any) => [
+        r.lineCode,
+        r.period,
+        Number(r.oee),
+        Number(r.availability),
+        Number(r.performance),
+        Number(r.quality),
+        Number(r.okQty),
+      ])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, 'Lines')
+    }
+
+    XLSX.writeFile(wb, `production_report_${nowStamp}.xlsx`)
+  }
 
   return (
     <div className="space-y-8">
@@ -136,8 +206,8 @@ export function ReportClient({ sections }: Props) {
         </h1>
         <p className="mt-1 text-sm text-slate-500">
           {th
-            ? 'สรุปจาก Session ที่กำลังเปิดกะหรือปิดกะแล้ว (ไม่รวมที่ยกเลิก) — เลือกแท็บด้านล่าง'
-            : 'Includes open and completed sessions (excludes cancelled) — use the tabs below'}
+            ? `สรุปจาก Session ที่กำลังเปิดกะหรือปิดกะแล้ว (ไม่รวมที่ยกเลิก) — เลือกแท็บด้านล่าง · ช่วงวันที่สูงสุด ${MAX_PRODUCTION_REPORT_RANGE_DAYS} วันต่อครั้ง`
+            : `Includes open and completed sessions (excludes cancelled) — use the tabs below · max ${MAX_PRODUCTION_REPORT_RANGE_DAYS} days per request`}
         </p>
       </div>
 
@@ -225,6 +295,15 @@ export function ReportClient({ sections }: Props) {
             </button>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => void exportExcel()}
+          disabled={!payload || isLoading}
+          className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Download size={16} />
+          {th ? 'Export Excel' : 'Export Excel'}
+        </button>
       </div>
 
       {apiError && (
@@ -247,7 +326,7 @@ export function ReportClient({ sections }: Props) {
         </div>
       )}
 
-      {isValidating && data && (
+      {isValidating && payload && (
         <p className="flex items-center gap-2 text-xs text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" aria-hidden />
           {th ? 'กำลังโหลดข้อมูล…' : 'Refreshing…'}
@@ -269,9 +348,9 @@ export function ReportClient({ sections }: Props) {
               <Package className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
               Part
             </TabsTrigger>
-            <TabsTrigger value="machines" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
+            <TabsTrigger value="lines" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
               <Cog className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-              {th ? 'เครื่องจักร' : 'Machines'}
+              {th ? 'ไลน์การผลิต' : 'Lines'}
             </TabsTrigger>
           </TabsList>
 
@@ -363,25 +442,24 @@ export function ReportClient({ sections }: Props) {
             </ReportSection>
           </TabsContent>
 
-          <TabsContent value="machines" className="mt-4">
+          <TabsContent value="lines" className="mt-4">
             <ReportSection
               icon={<Cog className="text-amber-600" size={20} />}
-              title={th ? 'เครื่องจักร — ประสิทธิภาพรวม (OEE%) ต่อช่วง' : 'Machines — OEE % by period'}
+              title={th ? 'ไลน์การผลิต — ประสิทธิภาพรวม (OEE%) ต่อช่วง' : 'Lines — OEE % by period'}
               subtitle={
                 th
-                  ? 'คิดจากชั่วโมงที่มีบันทึกของเครื่องนั้น (1 แถว = 1 ชม.) และ Breakdown/NG ของแถวนั้น — รวม Session ที่ยังเปิดกะ (ค่า OEE เป็นภาพระหว่างกะ)'
-                  : 'Per machine-hour row; includes open sessions (OEE is in-shift / preliminary until close).'
+                  ? 'คิดจากชั่วโมงที่มีบันทึกของแต่ละไลน์ (1 แถว = 1 ชม.) และ Breakdown/NG ของแถวนั้น — รวม Session ที่ยังเปิดกะ (ค่า OEE เป็นภาพระหว่างกะ)'
+                  : 'Per line-hour row; includes open sessions (OEE is in-shift / preliminary until close).'
               }
             >
               <SimpleTable
                 empty={
                   th
-                    ? 'ไม่มีข้อมูลเครื่อง (ต้องระบุเครื่องในบันทึกรายชั่วโมง)'
-                    : 'No machine-attributed hourly rows'
+                    ? 'ไม่มีข้อมูลไลน์ในช่วงที่เลือก'
+                    : 'No line rows in selected period'
                 }
                 cols={[
-                  th ? 'เครื่อง' : 'Machine',
-                  th ? 'สาย' : 'Line',
+                  th ? 'ไลน์' : 'Line',
                   periodLabel,
                   'OEE%',
                   th ? 'Avail' : 'Avail%',
@@ -389,9 +467,8 @@ export function ReportClient({ sections }: Props) {
                   th ? 'Qual' : 'Qual%',
                   th ? 'OK' : 'OK',
                 ]}
-                rows={byMachine.map(
+                rows={byLine.map(
                   (r: {
-                    mcNo: string
                     lineCode: string
                     period: string
                     oee: number
@@ -400,7 +477,6 @@ export function ReportClient({ sections }: Props) {
                     quality: number
                     okQty: number
                   }) => [
-                    r.mcNo,
                     r.lineCode,
                     r.period,
                     <span className={`font-bold ${getOeeBg(r.oee)} rounded px-2 py-0.5`}>{r.oee}%</span>,

@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
+import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
 import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/utils/oee'
-
-/** ช่วงสูงสุดต่อคำขอ — รองรับการดูย้อนหลังหลายปี (ระวังช้าถ้าข้อมูลมาก) */
-const MAX_RANGE_DAYS = 3650
 
 /** รวม Session ที่ยังเปิดกะ — ไม่เช่นนั้นรายงานจะว่างจนกว่าจะปิดกะ */
 const REPORT_SESSION_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const
@@ -55,9 +53,9 @@ export async function GET(req: NextRequest) {
   }
 
   const rangeMs = toExclusive.getTime() - fromDate.getTime()
-  if (rangeMs > MAX_RANGE_DAYS * 24 * 60 * 60 * 1000) {
+  if (rangeMs > MAX_PRODUCTION_REPORT_RANGE_DAYS * 24 * 60 * 60 * 1000) {
     return NextResponse.json(
-      { error: `ช่วงวันที่ยาวเกิน ${MAX_RANGE_DAYS} วัน` },
+      { error: `ช่วงวันที่ยาวเกิน ${MAX_PRODUCTION_REPORT_RANGE_DAYS} วัน (สูงสุด 1 ปีต่อคำขอ)` },
       { status: 400 },
     )
   }
@@ -76,7 +74,13 @@ export async function GET(req: NextRequest) {
       operatorId: true,
       partId: true,
       machineId: true,
-      session: { select: { sessionDate: true } },
+      session: {
+        select: {
+          sessionDate: true,
+          lineId: true,
+          line: { select: { lineCode: true } },
+        },
+      },
       operator: {
         select: { employeeCode: true, firstName: true, lastName: true },
       },
@@ -117,10 +121,21 @@ export async function GET(req: NextRequest) {
     bdMin: number
     slotCount: number
   }
+  type LineAgg = {
+    lineId: string
+    lineCode: string
+    period: string
+    okQty: number
+    targetQty: number
+    ngQty: number
+    bdMin: number
+    slotCount: number
+  }
 
   const opMap = new Map<string, OpRow>()
   const partMap = new Map<string, PartRow>()
   const mcMap = new Map<string, McAgg>()
+  const lineMap = new Map<string, LineAgg>()
 
   for (const r of records) {
     const period = periodKey(r.session.sessionDate, granularity)
@@ -154,33 +169,59 @@ export async function GET(req: NextRequest) {
     }
     partMap.get(pKey)!.okQty += r.okQty
 
-    if (r.machineId && r.machine) {
-      const mk = `${r.machineId}|${period}`
-      let bd = 0
-      for (const b of r.breakdownLogs) bd += b.breakTimeMin
-      let ng = 0
-      for (const n of r.ngLogs) ng += n.ngQty
+    let bd = 0
+    for (const b of r.breakdownLogs) bd += b.breakTimeMin
+    let ng = 0
+    for (const n of r.ngLogs) ng += n.ngQty
 
-      if (!mcMap.has(mk)) {
-        mcMap.set(mk, {
-          machineId: r.machineId,
-          mcNo: r.machine.mcNo,
-          lineCode: r.machine.line.lineCode,
-          period,
-          okQty: 0,
-          targetQty: 0,
-          ngQty: 0,
-          bdMin: 0,
-          slotCount: 0,
-        })
-      }
-      const m = mcMap.get(mk)!
-      m.okQty += r.okQty
-      m.targetQty += r.targetQty
-      m.ngQty += ng
-      m.bdMin += bd
-      m.slotCount += 1
+    const lk = `${r.session.lineId}|${period}`
+    if (!lineMap.has(lk)) {
+      lineMap.set(lk, {
+        lineId: r.session.lineId,
+        lineCode: r.session.line.lineCode,
+        period,
+        okQty: 0,
+        targetQty: 0,
+        ngQty: 0,
+        bdMin: 0,
+        slotCount: 0,
+      })
     }
+    const l = lineMap.get(lk)!
+    l.okQty += r.okQty
+    l.targetQty += r.targetQty
+    l.ngQty += ng
+    l.bdMin += bd
+    l.slotCount += 1
+
+    if (!(r.machineId && r.machine)) {
+      continue
+    }
+
+    const machineKey = r.machineId && r.machine ? r.machineId : `UNASSIGNED:${r.session.lineId}`
+    const machineName = r.machineId && r.machine ? r.machine.mcNo : 'UNASSIGNED'
+    const lineCode = r.machineId && r.machine ? r.machine.line.lineCode : r.session.line.lineCode
+    const mk = `${machineKey}|${period}`
+
+    if (!mcMap.has(mk)) {
+      mcMap.set(mk, {
+        machineId: machineKey,
+        mcNo: machineName,
+        lineCode,
+        period,
+        okQty: 0,
+        targetQty: 0,
+        ngQty: 0,
+        bdMin: 0,
+        slotCount: 0,
+      })
+    }
+    const m = mcMap.get(mk)!
+    m.okQty += r.okQty
+    m.targetQty += r.targetQty
+    m.ngQty += ng
+    m.bdMin += bd
+    m.slotCount += 1
   }
 
   const byOperator = Array.from(opMap.values()).sort((a, b) => {
@@ -221,6 +262,33 @@ export async function GET(req: NextRequest) {
     })
     .sort((a, b) => {
       const c = a.mcNo.localeCompare(b.mcNo, 'th', { numeric: true, sensitivity: 'base' })
+      if (c !== 0) return c
+      return a.period.localeCompare(b.period)
+    })
+
+  const byLine = Array.from(lineMap.values())
+    .map((l) => {
+      const plannedMin = l.slotCount * 60
+      const availability = calcAvailability(plannedMin, l.bdMin)
+      const performance = calcPerformance(l.okQty, l.targetQty)
+      const quality = calcQuality(l.okQty, l.ngQty)
+      const oee = calcOEE(availability, performance, quality)
+      return {
+        lineId: l.lineId,
+        lineCode: l.lineCode,
+        period: l.period,
+        okQty: l.okQty,
+        targetQty: l.targetQty,
+        ngQty: l.ngQty,
+        bdMin: l.bdMin,
+        availability,
+        performance,
+        quality,
+        oee,
+      }
+    })
+    .sort((a, b) => {
+      const c = a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' })
       if (c !== 0) return c
       return a.period.localeCompare(b.period)
     })
@@ -321,6 +389,7 @@ export async function GET(req: NextRequest) {
     byOperator,
     byPart,
     byMachine,
+    byLine,
     operatorMonthMatrix,
   })
 }
