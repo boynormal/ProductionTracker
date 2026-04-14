@@ -670,8 +670,8 @@ export function RecordClient({
           ) : (
             <p className="mt-2 text-sm text-indigo-100">
               {locale === 'th'
-                ? 'กรอกรหัสพนักงานเพื่อยืนยันตัวตนก่อนบันทึก (สแกน QR)'
-                : 'Enter your employee code to continue (QR scan flow).'}
+                ? 'กรอก PIN เพื่อยืนยันตัวตนก่อนบันทึก (สแกน QR)'
+                : 'Enter your PIN to continue (QR scan flow).'}
             </p>
           )}
         </div>
@@ -683,9 +683,9 @@ export function RecordClient({
             </div>
             <div>
               <h2 className="font-semibold text-slate-800">
-                {locale === 'th' ? 'กรอกรหัสพนักงาน' : 'Employee code'}
+                {locale === 'th' ? 'กรอก PIN' : 'PIN'}
               </h2>
-              <p className="text-xs text-slate-500">Enter Employee Code</p>
+              <p className="text-xs text-slate-500">Enter your PIN</p>
             </div>
           </div>
 
@@ -693,9 +693,9 @@ export function RecordClient({
             onSubmit={async (e) => {
               e.preventDefault()
               const fd = new FormData(e.currentTarget)
-              const employeeCode = String(fd.get('employeeCode') ?? '').trim()
-              if (!employeeCode) {
-                setPinGateError(locale === 'th' ? 'กรุณากรอกรหัสพนักงาน' : 'Enter employee code')
+              const pin = String(fd.get('pin') ?? '').trim()
+              if (!pin) {
+                setPinGateError(locale === 'th' ? 'กรุณากรอก PIN' : 'Enter PIN')
                 return
               }
               setPinGateLoading(true)
@@ -704,7 +704,7 @@ export function RecordClient({
                 const res = await fetch('/api/auth/pin', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ employeeCode }),
+                  body: JSON.stringify({ pin }),
                   credentials: 'include',
                 })
                 const json = await res.json()
@@ -728,9 +728,12 @@ export function RecordClient({
           >
             <div>
               <input
-                name="employeeCode"
-                autoComplete="username"
-                placeholder={locale === 'th' ? 'เช่น 1-68176' : 'e.g. 1-68176'}
+                name="pin"
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="PIN"
+                autoComplete="one-time-code"
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-center font-mono text-lg tracking-widest outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 autoFocus
               />

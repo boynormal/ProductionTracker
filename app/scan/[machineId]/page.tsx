@@ -7,21 +7,19 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { useI18n } from '@/lib/i18n'
 
 const pinSchema = z.object({
-  employeeCode: z.string().min(1, 'กรุณากรอกรหัสพนักงาน'),
+  pin: z.string().min(1, 'กรุณากรอก PIN'),
 })
 
 export default function ScanPage() {
   const { machineId } = useParams<{ machineId: string }>()
-  const { t, locale }  = useI18n()
   const [machine, setMachine]   = useState<any>(null)
   const [operator, setOperator] = useState<any>(null)
   const [loading, setLoading]   = useState(true)
   const [step, setStep]         = useState<'pin' | 'record'>('pin')
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<{ employeeCode: string }>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<{ pin: string }>({
     resolver: zodResolver(pinSchema),
   })
 
@@ -33,14 +31,14 @@ export default function ScanPage() {
       .catch(() => { toast.error('ไม่พบข้อมูลเครื่องจักร'); setLoading(false) })
   }, [machineId])
 
-  const onPinSubmit = async (data: { employeeCode: string }) => {
+  const onPinSubmit = async (data: { pin: string }) => {
     const res = await fetch('/api/auth/pin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeCode: data.employeeCode }),
+      body: JSON.stringify({ pin: data.pin.trim() }),
     })
     const json = await res.json()
-    if (!res.ok) { toast.error(json.error ?? 'ไม่พบรหัสพนักงาน'); return }
+    if (!res.ok) { toast.error(json.error ?? 'PIN ไม่ถูกต้อง'); return }
     setOperator(json.data)
     setStep('record')
     toast.success(`ยินดีต้อนรับ ${json.data.firstName} ${json.data.lastName}`)
@@ -93,21 +91,24 @@ export default function ScanPage() {
                 <User size={20} className="text-blue-600" />
               </div>
               <div>
-                <h2 className="font-semibold text-slate-800">กรอกรหัสพนักงาน</h2>
-                <p className="text-xs text-slate-500">Enter Employee Code</p>
+                <h2 className="font-semibold text-slate-800">กรอก PIN</h2>
+                <p className="text-xs text-slate-500">Enter your PIN</p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit(onPinSubmit)} className="space-y-4">
               <div>
                 <input
-                  {...register('employeeCode')}
-                  placeholder="เช่น 1-68176"
+                  {...register('pin')}
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="PIN"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-center text-lg font-mono tracking-widest outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   autoFocus
                 />
-                {errors.employeeCode && (
-                  <p className="mt-1 text-center text-xs text-red-500">{errors.employeeCode.message}</p>
+                {errors.pin && (
+                  <p className="mt-1 text-center text-xs text-red-500">{errors.pin.message}</p>
                 )}
               </div>
               <button
