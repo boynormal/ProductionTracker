@@ -54,6 +54,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (p.startsWith('/login')) return true
       if (p.startsWith('/api/auth')) return true
       if (p.startsWith('/api/notifications/check')) return true
+      /** Cron / scheduler: POST + Bearer / HMAC — auth ใน route handler */
+      if (p === '/api/production/sessions/auto-close') return true
       if (auth?.user) return true
 
       /** QR สาย: เปิดหน้าบันทึกได้ก่อน — กรอกรหัสพนักงานในหน้า (ไม่บังคับ user/pass NextAuth) */

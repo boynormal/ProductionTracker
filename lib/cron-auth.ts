@@ -8,7 +8,7 @@ import type { NextRequest } from 'next/server'
  * 1) `Authorization: Bearer <CRON_SECRET>` — เปรียบเทียบแบบ timing-safe
  * 2) HMAC + IP allowlist — ตั้ง `CRON_HMAC_SECRET` + `CRON_IP_ALLOWLIST` (comma-separated)
  *    - Headers: `X-Cron-Timestamp` (unix seconds), `X-Cron-Signature` (hex ของ HMAC-SHA256)
- *    - Payload ที่ sign: `${timestamp}\\n${METHOD}\\n${pathname}` (pathname จาก URL ไม่รวม query)
+ *    - Payload ที่ sign: `${timestamp}\\n${METHOD}\\n${pathname}` (pathname จาก URL ไม่รวม query; endpoint ที่แก้ข้อมูลใช้ POST เช่น auto-close)
  *
  * Env ที่เกี่ยวข้อง:
  * - CRON_SECRET — Bearer (เดิม)
