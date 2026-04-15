@@ -13,3 +13,8 @@ public/uploads/machines/*
 Documents/
 docs/
 Docs/
+
+# Local DB dumps (never commit — may contain secrets / PII)
+backups/*.dump
+backups/*.sql
+!backups/.gitkeep
