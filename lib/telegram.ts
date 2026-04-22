@@ -1,6 +1,10 @@
-export async function sendTelegramAlert(message: string): Promise<void> {
+type TelegramAlertOptions = {
+  chatId?: string | null
+}
+
+export async function sendTelegramAlert(message: string, options?: TelegramAlertOptions): Promise<void> {
   const token  = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_CHAT_ID
+  const chatId = options?.chatId?.trim() || process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) return
 
   try {

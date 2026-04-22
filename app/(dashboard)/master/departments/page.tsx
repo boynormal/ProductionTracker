@@ -15,7 +15,13 @@ export default async function DepartmentsPage() {
         _count: { select: { divisions: true } },
         divisions: {
           orderBy: { divisionCode: 'asc' },
-          select: { divisionCode: true, divisionName: true, isActive: true },
+          select: {
+            divisionCode: true,
+            divisionName: true,
+            isActive: true,
+            telegramEnabled: true,
+            telegramChatId: true,
+          },
         },
       },
     }),

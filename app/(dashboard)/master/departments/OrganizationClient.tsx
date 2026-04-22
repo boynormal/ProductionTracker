@@ -10,13 +10,24 @@ const activeOpts = [
   { value: 'false', label: 'ไม่ใช้งาน' },
 ]
 
+const telegramEnabledOpts = [
+  { value: 'true', label: 'เปิดใช้งาน Telegram' },
+  { value: 'false', label: 'ปิด Telegram ระดับฝ่าย' },
+]
+
 type Dept = {
   id: string
   departmentCode: string
   departmentName: string
   isActive: boolean
   _count?: { divisions: number }
-  divisions?: { divisionCode: string; divisionName: string; isActive: boolean }[]
+  divisions?: {
+    divisionCode: string
+    divisionName: string
+    isActive: boolean
+    telegramEnabled: boolean
+    telegramChatId: string | null
+  }[]
 }
 
 type Div = {
@@ -25,6 +36,8 @@ type Div = {
   divisionName: string
   departmentId: string
   isActive: boolean
+  telegramEnabled: boolean
+  telegramChatId: string | null
   department: { departmentCode: string; departmentName: string }
   _count?: { sections: number }
   sections?: { sectionCode: string; sectionName: string; isActive: boolean }[]
@@ -75,13 +88,22 @@ export function OrganizationClient({
   const t = (th: string, en: string) => (locale === 'th' ? th : en)
 
   const fmtDivList = (
-    rows: { divisionCode: string; divisionName: string; isActive: boolean }[] | undefined,
+    rows: {
+      divisionCode: string
+      divisionName: string
+      isActive: boolean
+      telegramEnabled: boolean
+      telegramChatId: string | null
+    }[] | undefined,
   ) => {
     if (!rows?.length) return '—'
     return rows
       .map(r => {
         const off = !r.isActive ? ` (${t('ไม่ใช้งาน', 'Inactive')})` : ''
-        return `${r.divisionCode} ${r.divisionName}${off}`
+        const tg = r.telegramEnabled
+          ? (r.telegramChatId?.trim() ? `TG:${r.telegramChatId}` : t('TG: fallback global', 'TG: fallback global'))
+          : t('TG: disabled', 'TG: disabled')
+        return `${r.divisionCode} ${r.divisionName}${off} · ${tg}`
       })
       .join(' · ')
   }
@@ -127,6 +149,8 @@ export function OrganizationClient({
   const divRows = divisions.map(d => ({
     ...d,
     statusLabel: d.isActive ? t('ใช้งาน', 'Active') : t('ไม่ใช้งาน', 'Inactive'),
+    telegramStatusLabel: d.telegramEnabled ? t('เปิด', 'Enabled') : t('ปิด', 'Disabled'),
+    telegramChatDisplay: d.telegramChatId?.trim() || t('fallback global', 'fallback global'),
     deptLabel: `${d.department.departmentCode} ${d.department.departmentName}`,
     secCount: d._count?.sections ?? 0,
     sectionsDetail: fmtSecList(d.sections),
@@ -254,10 +278,12 @@ export function OrganizationClient({
             titleEn="Divisions"
             apiEndpoint="/api/master/divisions"
             canEdit={canEdit}
-            createDefaults={{ isActive: 'true' }}
+            createDefaults={{ isActive: 'true', telegramEnabled: 'true' }}
             columns={[
               { key: 'divisionCode', label: 'รหัสฝ่าย', labelEn: 'Division code' },
               { key: 'divisionName', label: 'ชื่อฝ่าย', labelEn: 'Division name' },
+              { key: 'telegramStatusLabel', label: 'Telegram', labelEn: 'Telegram' },
+              { key: 'telegramChatDisplay', label: 'Telegram Chat ID', labelEn: 'Telegram Chat ID' },
               { key: 'deptLabel', label: 'แผนก (รหัสและชื่อ)', labelEn: 'Department (code + name)' },
               { key: 'statusLabel', label: 'สถานะ', labelEn: 'Status' },
               {
@@ -277,6 +303,19 @@ export function OrganizationClient({
             fields={[
               { key: 'divisionCode', label: 'รหัสฝ่าย', labelEn: 'Division code', type: 'text', required: true },
               { key: 'divisionName', label: 'ชื่อฝ่าย', labelEn: 'Division name', type: 'text', required: true },
+              {
+                key: 'telegramEnabled',
+                label: 'เปิดใช้งาน Telegram',
+                labelEn: 'Enable Telegram',
+                type: 'select',
+                options: telegramEnabledOpts,
+              },
+              {
+                key: 'telegramChatId',
+                label: 'Telegram Chat ID',
+                labelEn: 'Telegram Chat ID',
+                type: 'text',
+              },
               {
                 key: 'departmentId',
                 label: 'แผนก',

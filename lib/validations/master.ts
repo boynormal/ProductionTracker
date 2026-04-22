@@ -14,6 +14,11 @@ export const divisionSchema = z.object({
   divisionCode: z.string().min(1).max(30),
   divisionName: z.string().min(1).max(200),
   departmentId: z.string().min(1),
+  telegramChatId: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.union([z.string().regex(/^-?\d+$/, 'Telegram Chat ID ต้องเป็นตัวเลขเท่านั้น'), z.null()]).optional(),
+  ),
+  telegramEnabled: boolish.optional().default(true),
   isActive:     boolish.optional().default(true),
 })
 
