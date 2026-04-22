@@ -51,7 +51,7 @@ async function runAutoCloseJob(): Promise<JobResult> {
   const where = {
     status: 'IN_PROGRESS' as const,
     shiftType: window.shiftType,
-    sessionDate: { in: window.mode === 'hard_close' ? window.sessionDates : [new Date()] },
+    reportingDate: { in: window.mode === 'hard_close' ? window.reportingDates : [new Date()] },
   }
 
   if (window.mode === 'soft_checkpoint') {
@@ -85,6 +85,7 @@ async function runAutoCloseJob(): Promise<JobResult> {
       id: true,
       lineId: true,
       shiftType: true,
+      reportingDate: true,
       sessionDate: true,
       otHours: true,
       totalHours: true,
@@ -111,6 +112,7 @@ async function runAutoCloseJob(): Promise<JobResult> {
           lineId: row.lineId,
           lineCode: row.line?.lineCode ?? null,
           shiftType: row.shiftType,
+          reportingDate: row.reportingDate,
           sessionDate: row.sessionDate,
           otHours: row.otHours,
           totalHours: row.totalHours,
@@ -126,7 +128,7 @@ async function runAutoCloseJob(): Promise<JobResult> {
       mode: window.mode,
       reason: window.reason,
       shiftType: window.shiftType,
-      sessionDateKeys: window.sessionDateKeys,
+      reportingDateKeys: window.reportingDateKeys,
       scanned: candidates.length,
       completed: completedCount,
       skipped: candidates.length - completedCount,

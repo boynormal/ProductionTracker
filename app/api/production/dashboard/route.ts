@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { dayEndExclusiveUTC, getThaiTodayUTC, parseThaiCalendarDateUtc } from '@/lib/time-utils'
+import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 
 type Mode = 'day' | 'month'
+const WITH_LEGACY_SESSION_DATE_FALLBACK = false
 
 function monthToRange(monthStr: string): { from: Date; toExclusive: Date } | null {
   const m = /^(\d{4})-(\d{2})$/.exec(monthStr.trim())
@@ -45,30 +48,56 @@ export async function GET(req: NextRequest) {
     toExclusive = range.toExclusive
   }
 
+  const sectionIdParam = searchParams.get('sectionId')?.trim()
+  let lineFilter: Prisma.LineWhereInput | undefined
+  if (sectionIdParam) {
+    const sec = await prisma.section.findFirst({
+      where: { id: sectionIdParam, isActive: true },
+      select: { id: true },
+    })
+    if (!sec) {
+      return NextResponse.json({ error: 'Section not found' }, { status: 404 })
+    }
+    lineFilter = { sectionId: sectionIdParam }
+  }
+
+  const sessionWhere: Prisma.ProductionSessionWhereInput = {
+    ...reportingDateRangeWhere(from, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
+    status: { in: ['IN_PROGRESS', 'COMPLETED'] },
+    ...(lineFilter ? { line: lineFilter } : {}),
+  }
+
   const [sessions, activeSessions, unreadAlertsCount, totalMachines] = await Promise.all([
     prisma.productionSession.findMany({
-      where: {
-        sessionDate: { gte: from, lt: toExclusive },
-        status: { in: ['IN_PROGRESS', 'COMPLETED'] },
-      },
+      where: sessionWhere,
       include: {
         machine: true,
         line: true,
         hourlyRecords: { include: { breakdownLogs: true, ngLogs: true } },
       },
-      orderBy: [{ sessionDate: 'asc' }, { line: { lineCode: 'asc' } }, { id: 'asc' }],
+      orderBy: [{ reportingDate: 'asc' }, { sessionDate: 'asc' }, { line: { lineCode: 'asc' } }, { id: 'asc' }],
     }),
     prisma.productionSession.count({
-      where: { sessionDate: { gte: from, lt: toExclusive }, status: 'IN_PROGRESS' },
+      where: {
+        ...reportingDateRangeWhere(from, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
+        status: 'IN_PROGRESS',
+        ...(lineFilter ? { line: lineFilter } : {}),
+      },
     }),
     prisma.notification.count({ where: { isRead: false } }),
-    prisma.machine.count({ where: { isActive: true } }),
+    prisma.machine.count({
+      where: {
+        isActive: true,
+        ...(lineFilter ? { line: lineFilter } : {}),
+      },
+    }),
   ])
 
   return NextResponse.json({
     mode,
     from: from.toISOString().slice(0, 10),
     to: new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    sectionId: sectionIdParam || null,
     sessions,
     activeSessions,
     unreadAlertsCount,

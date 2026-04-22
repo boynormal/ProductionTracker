@@ -1,11 +1,17 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { QrGeneratorClient } from './QrGeneratorClient'
 
 export default async function QrGeneratorPage() {
   const session = await auth()
-  if (!session || !['ADMIN', 'ENGINEER'].includes(session.user.role)) redirect('/')
+  if (!session) redirect('/')
+
+  const canView = await checkPermissionForSession(session, 'menu.master.machines', {
+    menuPath: '/master/machines',
+  })
+  if (!canView) redirect('/')
 
   const lines = await prisma.line.findMany({
     where: { isActive: true },

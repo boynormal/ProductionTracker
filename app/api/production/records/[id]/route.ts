@@ -80,6 +80,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       session: {
         select: {
           lineId:      true,
+          reportingDate: true,
           sessionDate: true,
           shiftType:   true,
           line:        { select: { id: true, lineCode: true, lineName: true } },

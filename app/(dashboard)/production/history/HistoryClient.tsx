@@ -663,7 +663,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                 const avgPctAllNormal = dTot.avgPctNormal > 0 && nTot.avgPctNormal > 0
                   ? Math.round((dTot.avgPctNormal + nTot.avgPctNormal) / 2)
                   : dTot.avgPctNormal > 0 ? dTot.avgPctNormal : nTot.avgPctNormal
-                const rawDate  = day?.sessionDate ?? night?.sessionDate
+                const rawDate  = day?.reportingDate ?? night?.reportingDate
 
                 const dayParts   = getUniqueParts(day)
                 const nightParts = getUniqueParts(night)

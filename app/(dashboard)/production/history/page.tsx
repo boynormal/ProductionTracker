@@ -1,17 +1,19 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getThaiTodayUTC, formatThaiDateUTCISO, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
+import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { HistoryClient } from './HistoryLoader'
 
 export default async function HistoryPage() {
   const session = await auth()
+  const withLegacySessionDateFallback = false
 
   const today = getThaiTodayUTC()
   const defaultDate = formatThaiDateUTCISO(today)
 
   const [sessions, lines] = await Promise.all([
     prisma.productionSession.findMany({
-      where: { sessionDate: { gte: today, lt: dayEndExclusiveUTC(today) } },
+      where: reportingDateRangeWhere(today, dayEndExclusiveUTC(today), withLegacySessionDateFallback),
       include: {
         line: {
           include: {
@@ -35,7 +37,7 @@ export default async function HistoryPage() {
           orderBy: { hourSlot: 'asc' },
         },
       },
-      orderBy: [{ sessionDate: 'desc' }, { shiftType: 'asc' }],
+      orderBy: [{ reportingDate: 'desc' }, { sessionDate: 'desc' }, { shiftType: 'asc' }],
     }),
     prisma.line.findMany({
       where: { isActive: true },

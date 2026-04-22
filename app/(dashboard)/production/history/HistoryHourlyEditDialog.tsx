@@ -195,8 +195,8 @@ export function HistoryHourlyEditDialog({
     }
 
     const dateIso =
-      detail.session?.sessionDate ?
-        formatThaiDateUTCISO(new Date(detail.session.sessionDate))
+      detail.session?.reportingDate ?
+        formatThaiDateUTCISO(new Date(detail.session.reportingDate))
       : formatThaiDateUTCISO(getThaiTodayUTC())
     const shiftType = (detail.session?.shiftType ?? 'DAY') as 'DAY' | 'NIGHT'
     const hourSlot = Math.min(11, Math.max(1, Number(detail.hourSlot) || 1))

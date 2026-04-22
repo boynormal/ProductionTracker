@@ -21,6 +21,8 @@
     "db:import-employees": "ts-node -P tsconfig.seed.json prisma/import-employees.ts",
     "db:cleanup-cap-imp": "ts-node -P tsconfig.seed.json prisma/cleanup-cap-imp.ts",
     "db:seed-permissions": "ts-node -P tsconfig.seed.json prisma/seed-permissions.ts",
+    "db:backfill-reporting-date": "ts-node -P tsconfig.seed.json prisma/backfill-reporting-date.ts",
+    "db:backfill-reporting-date:apply": "ts-node -P tsconfig.seed.json prisma/backfill-reporting-date.ts --apply",
     "verify:permissions": "ts-node -P tsconfig.seed.json prisma/verify-permissions.ts",
     "telegram:ping": "node --env-file=.env.local scripts/telegram-ping.mjs"
   },

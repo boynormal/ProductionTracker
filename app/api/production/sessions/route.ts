@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { getCurrentShift } from '@/lib/utils/shift'
-import { getThaiTodayUTC, parseThaiPickerDateToUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
+import { getThaiTodayUTC, getThaiReportingDateUTC, parseThaiPickerDateToUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { checkPermission } from '@/lib/permissions/guard'
+import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
+
+const WITH_LEGACY_SESSION_DATE_FALLBACK = false
 
 export async function GET(req: NextRequest) {
   const ctx = await getOperatorContextFromApiRequest(req)
@@ -27,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (date) {
     const dayStart = parseThaiPickerDateToUTC(date)
     if (!dayStart) return NextResponse.json({ error: 'Invalid date' }, { status: 400 })
-    where.sessionDate = { gte: dayStart, lt: dayEndExclusiveUTC(dayStart) }
+    Object.assign(where, reportingDateRangeWhere(dayStart, dayEndExclusiveUTC(dayStart), WITH_LEGACY_SESSION_DATE_FALLBACK))
   }
 
   const include = detailed
@@ -55,7 +58,7 @@ export async function GET(req: NextRequest) {
   const sessions = await prisma.productionSession.findMany({
     where,
     include,
-    orderBy: [{ sessionDate: 'desc' }, { shiftType: 'asc' }],
+    orderBy: [{ reportingDate: 'desc' }, { sessionDate: 'desc' }, { shiftType: 'asc' }],
     take: detailed ? 500 : 50,
   })
 
@@ -89,8 +92,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'lineId required' }, { status: 400 })
     }
 
-    // ✅ ใช้เวลาไทย -- ไม่ขึ้นกับ timezone ของ server
-    const sessionDate = getThaiTodayUTC()
+    // ✅ ใช้เวลา server เป็นแหล่งเดียว แล้วแปลงเป็นปฏิทินไทยอย่าง deterministic
+    const startTime = new Date()
+    const nowMs = startTime.getTime()
+    const sessionDate = getThaiTodayUTC(nowMs)
+    const reportingDate = getThaiReportingDateUTC(nowMs)
     const shiftType   = getCurrentShift()
 
     // Session unique: 1 Line ต่อ 1 กะ ต่อ 1 วัน
@@ -110,11 +116,12 @@ export async function POST(req: NextRequest) {
     const created = await prisma.productionSession.create({
       data: {
         sessionDate,
+        reportingDate,
         shiftType,
         lineId:      body.lineId,
         machineId:   body.machineId ?? null,
         operatorId,
-        startTime:   new Date(),
+        startTime,
         normalHours: body.normalHours ?? 8,
         otHours:     body.otHours ?? 0,
         totalHours,

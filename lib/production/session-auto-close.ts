@@ -19,8 +19,8 @@ export type AutoCloseWindow =
       shiftType: ShiftType
       nowHour: number
       nowMinute: number
-      sessionDates: Date[]
-      sessionDateKeys: string[]
+      reportingDates: Date[]
+      reportingDateKeys: string[]
     }
 
 /**
@@ -61,8 +61,8 @@ export function resolveAutoCloseWindow(nowMs: number = Date.now()): AutoCloseWin
       shiftType: 'DAY',
       nowHour: hour,
       nowMinute: minute,
-      sessionDates: [today],
-      sessionDateKeys: [formatThaiDateUTCISO(today)],
+      reportingDates: [today],
+      reportingDateKeys: [formatThaiDateUTCISO(today)],
     }
   }
 
@@ -73,8 +73,8 @@ export function resolveAutoCloseWindow(nowMs: number = Date.now()): AutoCloseWin
       shiftType: 'NIGHT',
       nowHour: hour,
       nowMinute: minute,
-      sessionDates: [today, yesterday],
-      sessionDateKeys: [formatThaiDateUTCISO(today), formatThaiDateUTCISO(yesterday)],
+      reportingDates: [yesterday],
+      reportingDateKeys: [formatThaiDateUTCISO(yesterday)],
     }
   }
 

@@ -26,6 +26,7 @@ interface Props {
     mode: 'day' | 'month'
     from: string
     to: string
+    sectionId: string | null
     sessions: any[]
     activeSessions: number
     unreadAlertsCount: number
@@ -33,15 +34,23 @@ interface Props {
   }
   initialDate: string
   initialMonth: string
+  sections: { id: string; sectionCode: string; sectionName: string }[]
   userName: string
 }
 
-export function DashboardClient({ initialData, initialDate, initialMonth, userName }: Props) {
+export function DashboardClient({
+  initialData,
+  initialDate,
+  initialMonth,
+  sections,
+  userName,
+}: Props) {
   const { t, locale } = useI18n()
   const [now, setNow] = useState(() => new Date())
   const [mode, setMode] = useState<'day' | 'month'>('day')
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [selectedMonth, setSelectedMonth] = useState(initialMonth)
+  const [sectionId, setSectionId] = useState('')
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
@@ -52,8 +61,9 @@ export function DashboardClient({ initialData, initialDate, initialMonth, userNa
     const p = new URLSearchParams({ mode })
     if (mode === 'day') p.set('date', selectedDate)
     else p.set('month', selectedMonth)
+    if (sectionId) p.set('sectionId', sectionId)
     return p.toString()
-  }, [mode, selectedDate, selectedMonth])
+  }, [mode, selectedDate, selectedMonth, sectionId])
 
   const { data, error, isLoading } = useSWR(`/api/production/dashboard?${qs}`, fetcher, {
     fallbackData: initialData,
@@ -84,10 +94,16 @@ export function DashboardClient({ initialData, initialDate, initialMonth, userNa
   const oee    = calcOEE(avail, perf, qual)
 
   const unread = unreadAlertsCount
+  const sectionLabel = sectionId
+    ? sections.find((s) => s.id === sectionId)?.sectionName ?? ''
+    : ''
   const periodText =
     mode === 'day'
       ? (locale === 'th' ? `วันที่ ${selectedDate}` : `Date ${selectedDate}`)
       : (locale === 'th' ? `เดือน ${selectedMonth}` : `Month ${selectedMonth}`)
+  const filterSectionText =
+    sectionLabel &&
+    (locale === 'th' ? ` · ส่วน ${sectionLabel}` : ` · ${sectionLabel}`)
 
   const kpiCards = [
     { label: t('oee'),          value: `${oee}%`,   color: getOeeBg(oee),        icon: <TrendingUp size={20} /> },
@@ -110,6 +126,7 @@ export function DashboardClient({ initialData, initialDate, initialMonth, userNa
           <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
             <CalendarDays size={13} />
             {periodText}
+            {filterSectionText}
           </p>
         </div>
         <div className="text-right text-sm text-slate-500">
@@ -165,6 +182,21 @@ export function DashboardClient({ initialData, initialDate, initialMonth, userNa
                 />
               </div>
             )}
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">{locale === 'th' ? 'ส่วน' : 'Section'}</label>
+              <select
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
+              >
+                <option value="">{locale === 'th' ? 'ทั้งหมด' : 'All'}</option>
+                {sections.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.sectionCode} — {s.sectionName}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -292,7 +324,7 @@ export function DashboardClient({ initialData, initialDate, initialMonth, userNa
                     <tr key={sess.id} className="hover:bg-slate-50 transition-colors">
                       {mode === 'month' ? (
                         <td className="border border-slate-100 px-4 py-3 font-mono text-xs text-slate-500">
-                          {String(sess.sessionDate).slice(0, 10)}
+                          {String(sess.reportingDate ?? sess.sessionDate).slice(0, 10)}
                         </td>
                       ) : null}
                       <td className="border border-slate-100 px-4 py-3 font-medium text-slate-800">{machineLabel}</td>

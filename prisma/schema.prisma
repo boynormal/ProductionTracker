@@ -358,6 +358,7 @@ enum ProblemType {
 model ProductionSession {
   id          String        @id @default(cuid())
   sessionDate DateTime      @db.Date
+  reportingDate DateTime?   @db.Date
   shiftType   ShiftType
   lineId      String
   machineId   String?
@@ -380,10 +381,15 @@ model ProductionSession {
 
   @@unique([sessionDate, shiftType, lineId])
   @@index([sessionDate, shiftType, status])
+  @@index([reportingDate, shiftType, status])
   @@index([lineId, status, sessionDate])
+  @@index([lineId, status, reportingDate])
   @@index([lineId, sessionDate, shiftType, status])
+  @@index([lineId, reportingDate, shiftType, status])
   @@index([machineId, sessionDate])
+  @@index([machineId, reportingDate])
   @@index([status, sessionDate])
+  @@index([status, reportingDate])
   @@map("production_sessions")
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
+import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
 import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/utils/oee'
 
@@ -9,9 +10,10 @@ import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/u
 const REPORT_SESSION_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const
 
 type Granularity = 'day' | 'month'
+const WITH_LEGACY_SESSION_DATE_FALLBACK = false
 
-function periodKey(sessionDate: Date, g: Granularity): string {
-  const ymd = sessionDate.toISOString().slice(0, 10)
+function periodKey(reportingDate: Date, g: Granularity): string {
+  const ymd = reportingDate.toISOString().slice(0, 10)
   return g === 'month' ? ymd.slice(0, 7) : ymd
 }
 
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
     where: {
       session: {
         status: { in: [...REPORT_SESSION_STATUSES] },
-        sessionDate: { gte: fromDate, lt: toExclusive },
+        ...reportingDateRangeWhere(fromDate, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
         ...(sectionId ? { line: { sectionId } } : {}),
       },
     },
@@ -76,6 +78,7 @@ export async function GET(req: NextRequest) {
       machineId: true,
       session: {
         select: {
+          reportingDate: true,
           sessionDate: true,
           lineId: true,
           line: { select: { lineCode: true } },
@@ -138,7 +141,8 @@ export async function GET(req: NextRequest) {
   const lineMap = new Map<string, LineAgg>()
 
   for (const r of records) {
-    const period = periodKey(r.session.sessionDate, granularity)
+    if (!r.session.reportingDate) continue
+    const period = periodKey(r.session.reportingDate, granularity)
     const opKey = `${r.operatorId}|${r.partId}|${period}`
     const pKey = `${r.partId}|${period}`
 
@@ -315,7 +319,8 @@ export async function GET(req: NextRequest) {
     const grid = new Map<string, Map<number, Map<string, PartAgg>>>()
 
     for (const r of records) {
-      const sd = r.session.sessionDate
+      const sd = r.session.reportingDate
+      if (!sd) continue
       if (sd < mStart || sd >= mEnd) continue
 
       const day = sd.getUTCDate()
@@ -341,7 +346,8 @@ export async function GET(req: NextRequest) {
 
     const meta = new Map<string, { employeeCode: string; name: string }>()
     for (const r of records) {
-      const sd = r.session.sessionDate
+      const sd = r.session.reportingDate
+      if (!sd) continue
       if (sd < mStart || sd >= mEnd) continue
       if (!meta.has(r.operatorId)) {
         meta.set(r.operatorId, {

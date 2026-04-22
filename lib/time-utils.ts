@@ -23,6 +23,8 @@
 
 /** Fixed offset Thailand vs UTC (no DST). */
 export const THAI_OFFSET_MS = 7 * 60 * 60 * 1000
+export const REPORTING_CUTOFF_HOUR = 8
+export const REPORTING_CUTOFF_MINUTE = 0
 
 export type ShiftType = 'DAY' | 'NIGHT'
 
@@ -107,6 +109,40 @@ export function getThaiTodayUTC(nowMs: number = Date.now()): Date {
   const thaiMs = nowMs + THAI_OFFSET_MS
   const thaiDayMs = Math.floor(thaiMs / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000)
   return new Date(thaiDayMs)
+}
+
+/**
+ * Convert an instant to reporting date (Thai business day) using `[08:00, 08:00)` cutoff.
+ *
+ * Boundary examples (Thailand local time):
+ * - 07:59:59 => previous calendar day
+ * - 08:00:00 => current calendar day
+ * - 19:59:59 => current calendar day
+ * - 20:00:00 => current calendar day
+ */
+export function getThaiReportingDateUTC(
+  nowMs: number = Date.now(),
+  cutoffHour: number = REPORTING_CUTOFF_HOUR,
+  cutoffMinute: number = REPORTING_CUTOFF_MINUTE,
+): Date {
+  const thaiNow = new Date(nowMs + THAI_OFFSET_MS)
+  const minutesNow = thaiNow.getUTCHours() * 60 + thaiNow.getUTCMinutes()
+  const cutoffMinutes = cutoffHour * 60 + cutoffMinute
+  const dayOffset = minutesNow < cutoffMinutes ? -1 : 0
+  return new Date(Date.UTC(
+    thaiNow.getUTCFullYear(),
+    thaiNow.getUTCMonth(),
+    thaiNow.getUTCDate() + dayOffset,
+  ))
+}
+
+/** Reporting date from a persisted instant (UTC Date). */
+export function reportingDateFromInstant(
+  instant: Date,
+  cutoffHour: number = REPORTING_CUTOFF_HOUR,
+  cutoffMinute: number = REPORTING_CUTOFF_MINUTE,
+): Date {
+  return getThaiReportingDateUTC(instant.getTime(), cutoffHour, cutoffMinute)
 }
 
 export function getThaiDaysAgoUTC(days: number, nowMs: number = Date.now()): Date {
