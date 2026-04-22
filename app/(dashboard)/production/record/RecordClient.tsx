@@ -252,6 +252,7 @@ export function RecordClient({
   const [lineSearch, setLineSearch] = useState('')
   const [partSearch, setPartSearch] = useState('')
   const [linePanelOpen, setLinePanelOpen] = useState(false)
+  const [partPanelOpen, setPartPanelOpen] = useState(false)
   const [selectedSectionId, setSelectedSectionId] = useState(() =>
     getInitialSectionId(lines, lockedLine, initialLineId),
   )
@@ -264,6 +265,8 @@ export function RecordClient({
   const [pinGateError, setPinGateError] = useState('')
   const linePickerRef = useRef<HTMLDivElement>(null)
   const lineSearchInputRef = useRef<HTMLInputElement>(null)
+  const partPickerRef = useRef<HTMLDivElement>(null)
+  const partSearchInputRef = useRef<HTMLInputElement>(null)
 
   const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -374,11 +377,17 @@ export function RecordClient({
     })
   }, [lineTargetsForContext, partSearch])
 
+  const selectedPartOption = useMemo(
+    () => lineTargetsForContext.find((pt: any) => pt.partId === watchPartId) ?? null,
+    [lineTargetsForContext, watchPartId],
+  )
+
   const handleLineChange = useCallback(
     (lineId: string) => {
       setSelectedLineId(lineId)
       setValue('partId', '')
       setPartSearch('')
+      setPartPanelOpen(false)
       setLineSearch('')
       setLinePanelOpen(false)
     },
@@ -389,6 +398,7 @@ export function RecordClient({
     (sid: string) => {
       setSelectedSectionId(sid)
       setPartSearch('')
+      setPartPanelOpen(false)
       setLineSearch('')
       setLinePanelOpen(false)
       setSelectedLineId((prev) => {
@@ -436,6 +446,9 @@ export function RecordClient({
     function onDocMouseDown(e: MouseEvent) {
       if (linePickerRef.current && !linePickerRef.current.contains(e.target as Node)) {
         setLinePanelOpen(false)
+      }
+      if (partPickerRef.current && !partPickerRef.current.contains(e.target as Node)) {
+        setPartPanelOpen(false)
       }
     }
     document.addEventListener('mousedown', onDocMouseDown)
@@ -991,32 +1004,91 @@ export function RecordClient({
           {lineContextId && lineTargetsForContext.length > 0 ? (
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">{t('part')}</label>
-              <div className="relative mb-2">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={partSearch}
-                  onChange={(e) => setPartSearch(e.target.value)}
-                  placeholder={locale === 'th' ? 'ค้นหา Part / SAMCO / Part No.' : 'Search Part / SAMCO / Part No.'}
-                  className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-400"
-                />
+              <div ref={partPickerRef} className="relative">
+                <input type="hidden" {...register('partId')} />
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    strokeWidth={2.25}
+                    aria-hidden
+                  />
+                  <input
+                    ref={partSearchInputRef}
+                    type="text"
+                    inputMode="search"
+                    value={partSearch}
+                    onChange={(e) => {
+                      setPartSearch(e.target.value)
+                      setPartPanelOpen(true)
+                    }}
+                    onFocus={() => setPartPanelOpen(true)}
+                    placeholder={
+                      selectedPartOption
+                        ? `${selectedPartOption.part.partSamco} / ${selectedPartOption.part.partName}`
+                        : (locale === 'th' ? 'ค้นหา Part / SAMCO / Part No.' : 'Search Part / SAMCO / Part No.')
+                    }
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-10 pr-11 text-base outline-none transition-shadow focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    aria-expanded={partPanelOpen}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartPanelOpen((open) => !open)
+                      queueMicrotask(() => partSearchInputRef.current?.focus())
+                    }}
+                    className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-50"
+                    aria-label={locale === 'th' ? 'เปิดรายการ Part' : 'Toggle part list'}
+                  >
+                    <ChevronsUpDown className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {partPanelOpen ? (
+                  <ul
+                    role="listbox"
+                    className="absolute left-0 right-0 z-[100] mt-1 w-full list-none overflow-x-hidden overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                    style={{ maxHeight: LINE_LIST_MAX_HEIGHT }}
+                  >
+                    {filteredTargetsForContext.length === 0 ? (
+                      <li className="px-3 py-2.5 text-sm text-slate-400">
+                        {locale === 'th' ? 'ไม่พบ Part ที่ค้น' : 'No matching parts'}
+                      </li>
+                    ) : (
+                      filteredTargetsForContext.map((pt: any) => (
+                        <li key={pt.partId} role="presentation">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={watchPartId === pt.partId}
+                            onClick={() => {
+                              setValue('partId', pt.partId, { shouldValidate: true, shouldDirty: true })
+                              setPartSearch('')
+                              setPartPanelOpen(false)
+                            }}
+                            className={cn(
+                              'flex w-full items-center gap-3 px-3 py-2.5 text-left text-base transition-colors hover:bg-slate-50',
+                              watchPartId === pt.partId && 'bg-blue-50 text-blue-900',
+                            )}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-medium text-slate-800">
+                                {pt.part.partSamco} / {pt.part.partName}
+                              </div>
+                              <div className="truncate text-xs text-slate-500">
+                                {pt.part.partNo || '-'}
+                              </div>
+                            </div>
+                            <div className="ml-auto shrink-0 text-sm tabular-nums text-slate-600">
+                              {pt.piecesPerHour} pcs/hr
+                            </div>
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                ) : null}
               </div>
-              <select
-                {...register('partId')}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base outline-none focus:border-blue-400"
-              >
-                <option value="">{t('recordSelectPart')}</option>
-                {filteredTargetsForContext.map((pt: any) => (
-                  <option key={pt.partId} value={pt.partId}>
-                    {pt.part.partSamco} / {pt.part.partName} ({pt.piecesPerHour} pcs/hr)
-                  </option>
-                ))}
-              </select>
-              {partSearch && filteredTargetsForContext.length === 0 ? (
-                <p className="mt-1 text-xs text-amber-600">
-                  {locale === 'th' ? 'ไม่พบ Part ที่ตรงกับคำค้นหา' : 'No parts match your search.'}
-                </p>
-              ) : null}
               {errors.partId && <p className="mt-1 text-sm text-red-500">{errors.partId.message}</p>}
             </div>
           ) : null}
