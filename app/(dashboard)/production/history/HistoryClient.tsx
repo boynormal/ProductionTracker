@@ -272,7 +272,9 @@ function ShiftHourGrid({
   locale: string
   keyPrefix: string
 }) {
-  const shiftType = sess?.shiftType ?? (keyPrefix.includes('day') ? 'DAY' : 'NIGHT')
+  const shiftType: 'DAY' | 'NIGHT' = sess?.shiftType === 'NIGHT'
+    ? 'NIGHT'
+    : (sess?.shiftType === 'DAY' ? 'DAY' : (keyPrefix.includes('day') ? 'DAY' : 'NIGHT'))
   const records   = sess ? (Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords : []) : []
   const slots = SHIFT_CONFIGS[shiftType].slots
 
