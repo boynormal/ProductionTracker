@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useI18n } from '@/lib/i18n'
-import { formatUtcCalendarDate } from '@/lib/time-utils'
+import { formatUtcCalendarDate, SHIFT_CONFIGS } from '@/lib/time-utils'
 import { Search, Wrench, XCircle, Loader2, CalendarDays, Factory, ChevronDown, Layers, LayoutList } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
@@ -274,21 +274,18 @@ function ShiftHourGrid({
 }) {
   const shiftType = sess?.shiftType ?? (keyPrefix.includes('day') ? 'DAY' : 'NIGHT')
   const records   = sess ? (Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords : []) : []
-  const normalH   = sess ? (typeof sess.normalHours === 'number' ? sess.normalHours : 8) : 8
-  const maxOtSlots = 3
-  const startHour  = shiftType === 'DAY' ? 8 : 20
-  const breakHour  = shiftType === 'DAY' ? 12 : 0
+  const slots = SHIFT_CONFIGS[shiftType].slots
 
-  function slotCell(slot: number, isOT: boolean) {
+  function slotCell(slotDef: { slot: number; time: string; isOvertime: boolean }) {
+    const slot = Number(slotDef.slot) || 0
     const rec      = recordForHourSlot(records, slot)
-    const hourTime = (startHour + slot - 1) % 24
-    if (hourTime === breakHour) return null
+    const timeStr  = slotDef.time
     return (
       <HistorySlotCell
         key={`${keyPrefix}-${slot}`}
         slot={slot}
-        hourTime={hourTime}
-        isOT={isOT}
+        timeStr={timeStr}
+        isOT={slotDef.isOvertime}
         rec={rec}
         canEdit={canEdit}
         onEdit={onEdit}
@@ -298,28 +295,27 @@ function ShiftHourGrid({
 
   return (
     <div className="grid grid-cols-4 gap-1 sm:grid-cols-10">
-      {Array.from({ length: normalH + maxOtSlots }, (_, i) => slotCell(i + 1, i >= normalH))}
+      {slots.map((s) => slotCell(s))}
     </div>
   )
 }
 
 function HistorySlotCell({
   slot,
-  hourTime,
+  timeStr,
   isOT,
   rec,
   canEdit,
   onEdit,
 }: {
   slot: number
-  hourTime: number
+  timeStr: string
   isOT: boolean
   rec: any | undefined
   canEdit: boolean
   onEdit: (id: string) => void
 }) {
   const partSamco  = rec?.part?.partSamco
-  const timeStr    = `${String(hourTime).padStart(2, '0')}:00`
   const okQty      = rec ? (Number(rec.okQty) || 0) : 0
   const targetQty  = rec ? (Number(rec.targetQty) || 0) : 0
   const percentage = targetQty > 0 ? Math.round((okQty / targetQty) * 100) : 0
