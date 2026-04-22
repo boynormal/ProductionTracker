@@ -277,17 +277,37 @@ function ShiftHourGrid({
     : (sess?.shiftType === 'DAY' ? 'DAY' : (keyPrefix.includes('day') ? 'DAY' : 'NIGHT'))
   const records   = sess ? (Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords : []) : []
   const slots = SHIFT_CONFIGS[shiftType].slots
+  const breakStartTime = SHIFT_CONFIGS[shiftType].breakTime.split('-')[0] ?? ''
 
-  function slotCell(slotDef: { slot: number; time: string; isOvertime: boolean }) {
-    const slot = Number(slotDef.slot) || 0
-    const rec      = recordForHourSlot(records, slot)
-    const timeStr  = slotDef.time
+  const displayCells: Array<{ slot: number | null; time: string; isOvertime: boolean; isBreak: boolean }> = []
+  for (const s of slots) {
+    displayCells.push({
+      slot: Number(s.slot) || 0,
+      time: s.time,
+      isOvertime: !!s.isOvertime,
+      isBreak: false,
+    })
+    if (s.endTime === breakStartTime) {
+      displayCells.push({
+        slot: null,
+        time: breakStartTime,
+        isOvertime: false,
+        isBreak: true,
+      })
+    }
+  }
+
+  function slotCell(cell: { slot: number | null; time: string; isOvertime: boolean; isBreak: boolean }) {
+    const slot = cell.slot
+    const rec = slot == null ? undefined : recordForHourSlot(records, slot)
+    const timeStr  = cell.time
     return (
       <HistorySlotCell
-        key={`${keyPrefix}-${slot}`}
+        key={`${keyPrefix}-${timeStr}-${slot ?? 'break'}`}
         slot={slot}
         timeStr={timeStr}
-        isOT={slotDef.isOvertime}
+        isOT={cell.isOvertime}
+        isBreak={cell.isBreak}
         rec={rec}
         canEdit={canEdit}
         onEdit={onEdit}
@@ -296,8 +316,10 @@ function ShiftHourGrid({
   }
 
   return (
-    <div className="grid grid-cols-4 gap-1 sm:grid-cols-10">
-      {slots.map((s) => slotCell(s))}
+    <div className="overflow-x-auto">
+      <div className="grid min-w-[46rem] grid-cols-12 gap-1">
+        {displayCells.map((cell) => slotCell(cell))}
+      </div>
     </div>
   )
 }
@@ -306,13 +328,15 @@ function HistorySlotCell({
   slot,
   timeStr,
   isOT,
+  isBreak,
   rec,
   canEdit,
   onEdit,
 }: {
-  slot: number
+  slot: number | null
   timeStr: string
   isOT: boolean
+  isBreak: boolean
   rec: any | undefined
   canEdit: boolean
   onEdit: (id: string) => void
@@ -325,7 +349,9 @@ function HistorySlotCell({
   const inner = (
     <>
       <span className="font-bold leading-none text-[10px]">{timeStr}</span>
-      {rec ? (
+      {isBreak ? (
+        <span className="mt-1 text-[10px] leading-none text-slate-500">พัก</span>
+      ) : rec ? (
         <>
           <span className="font-mono mt-1 leading-none text-[11px]">{okQty}/{targetQty}</span>
           <span className={cn('font-bold text-[10px] leading-none',
@@ -349,7 +375,9 @@ function HistorySlotCell({
   const cls = cn(
     'rounded-lg p-2 text-center text-xs border min-h-[3.25rem] flex flex-col items-center justify-center',
     partSamco != null && 'min-h-[4rem]',
-    rec
+    isBreak
+      ? 'bg-slate-100 border-slate-300 text-slate-500'
+      : rec
       ? (isOT ? 'bg-green-100 border-green-400 text-green-700' : 'slot-recorded')
       : (isOT ? 'bg-orange-100 border-orange-300 text-orange-600' : 'bg-red-100 border-red-300 text-red-600'),
     rec?.id && canEdit && 'cursor-pointer hover:ring-2 hover:ring-blue-400 hover:ring-offset-1',

@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { Factory, Loader2, QrCode, User, CheckCircle2 } from 'lucide-react'
+import { Factory, Loader2, QrCode, User, CheckCircle2, Search } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -18,6 +18,7 @@ export default function ScanPage() {
   const [operator, setOperator] = useState<any>(null)
   const [loading, setLoading]   = useState(true)
   const [step, setStep]         = useState<'pin' | 'record'>('pin')
+  const [partSearch, setPartSearch] = useState('')
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<{ pin: string }>({
     resolver: zodResolver(pinSchema),
@@ -43,6 +44,18 @@ export default function ScanPage() {
     setStep('record')
     toast.success(`ยินดีต้อนรับ ${json.data.firstName} ${json.data.lastName}`)
   }
+
+  const filteredPartTargets = useMemo(() => {
+    const list = Array.isArray(machine?.partTargets) ? machine.partTargets : []
+    const q = partSearch.trim().toLowerCase()
+    if (!q) return list
+    return list.filter((pt: any) => {
+      const samco = String(pt?.part?.partSamco ?? '').toLowerCase()
+      const partNo = String(pt?.part?.partNo ?? '').toLowerCase()
+      const partName = String(pt?.part?.partName ?? '').toLowerCase()
+      return samco.includes(q) || partNo.includes(q) || partName.includes(q)
+    })
+  }, [machine?.partTargets, partSearch])
 
   if (loading) {
     return (
@@ -144,7 +157,17 @@ export default function ScanPage() {
                 <p className="text-center text-sm text-slate-400 py-4">ไม่มี Part ที่กำหนดไว้</p>
               ) : (
                 <div className="space-y-2">
-                  {machine.partTargets?.map((pt: any) => (
+                  <div className="relative mb-2">
+                    <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={partSearch}
+                      onChange={(e) => setPartSearch(e.target.value)}
+                      placeholder="ค้นหา Part / SAMCO / Part No."
+                      className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                  {filteredPartTargets.map((pt: any) => (
                     <a
                       key={pt.id}
                       href={`/production/record?machineId=${machine.id}&partTargetId=${pt.id}`}
@@ -164,6 +187,9 @@ export default function ScanPage() {
                       </div>
                     </a>
                   ))}
+                  {partSearch && filteredPartTargets.length === 0 ? (
+                    <p className="py-3 text-center text-sm text-amber-600">ไม่พบ Part ที่ตรงกับคำค้นหา</p>
+                  ) : null}
                 </div>
               )}
             </div>

@@ -250,6 +250,7 @@ export function RecordClient({
   }, [t, machinesOnLine, sessionData?.machineId])
 
   const [lineSearch, setLineSearch] = useState('')
+  const [partSearch, setPartSearch] = useState('')
   const [linePanelOpen, setLinePanelOpen] = useState(false)
   const [selectedSectionId, setSelectedSectionId] = useState(() =>
     getInitialSectionId(lines, lockedLine, initialLineId),
@@ -362,10 +363,22 @@ export function RecordClient({
     return linePartTargetsByLine[lineContextId] ?? []
   }, [lineContextId, linePartTargetsByLine])
 
+  const filteredTargetsForContext = useMemo(() => {
+    const q = partSearch.trim().toLowerCase()
+    if (!q) return lineTargetsForContext
+    return lineTargetsForContext.filter((pt: any) => {
+      const samco = String(pt?.part?.partSamco ?? '').toLowerCase()
+      const partNo = String(pt?.part?.partNo ?? '').toLowerCase()
+      const partName = String(pt?.part?.partName ?? '').toLowerCase()
+      return samco.includes(q) || partNo.includes(q) || partName.includes(q)
+    })
+  }, [lineTargetsForContext, partSearch])
+
   const handleLineChange = useCallback(
     (lineId: string) => {
       setSelectedLineId(lineId)
       setValue('partId', '')
+      setPartSearch('')
       setLineSearch('')
       setLinePanelOpen(false)
     },
@@ -375,6 +388,7 @@ export function RecordClient({
   const handleSectionChange = useCallback(
     (sid: string) => {
       setSelectedSectionId(sid)
+      setPartSearch('')
       setLineSearch('')
       setLinePanelOpen(false)
       setSelectedLineId((prev) => {
@@ -977,17 +991,32 @@ export function RecordClient({
           {lineContextId && lineTargetsForContext.length > 0 ? (
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-600">{t('part')}</label>
+              <div className="relative mb-2">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={partSearch}
+                  onChange={(e) => setPartSearch(e.target.value)}
+                  placeholder={locale === 'th' ? 'ค้นหา Part / SAMCO / Part No.' : 'Search Part / SAMCO / Part No.'}
+                  className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
               <select
                 {...register('partId')}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base outline-none focus:border-blue-400"
               >
                 <option value="">{t('recordSelectPart')}</option>
-                {lineTargetsForContext.map((pt: any) => (
+                {filteredTargetsForContext.map((pt: any) => (
                   <option key={pt.partId} value={pt.partId}>
                     {pt.part.partSamco} / {pt.part.partName} ({pt.piecesPerHour} pcs/hr)
                   </option>
                 ))}
               </select>
+              {partSearch && filteredTargetsForContext.length === 0 ? (
+                <p className="mt-1 text-xs text-amber-600">
+                  {locale === 'th' ? 'ไม่พบ Part ที่ตรงกับคำค้นหา' : 'No parts match your search.'}
+                </p>
+              ) : null}
               {errors.partId && <p className="mt-1 text-sm text-red-500">{errors.partId.message}</p>}
             </div>
           ) : null}
