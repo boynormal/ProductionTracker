@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { useI18n } from '@/lib/i18n'
 import { SHIFT_CONFIGS, getCurrentShift, getCurrentHourSlot, getSlotStartTime } from '@/lib/utils/shift'
-import { getThaiIsoDateTimeLocal, getThaiTodayUTC, formatThaiDateUTCISO, parseThaiCalendarDateUtc } from '@/lib/time-utils'
+import { getThaiIsoDateTimeLocal, getThaiTodayUTC, getThaiReportingDateUTC, formatThaiDateUTCISO, parseThaiCalendarDateUtc } from '@/lib/time-utils'
 import { buildBreakdownIntervalsFromSlotMinutes } from '@/lib/utils/breakdown-datetime'
 import { Plus, Minus, Factory, Clock, CheckCircle2, XCircle, Wrench, Loader2, Coffee, Search, User, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
@@ -267,6 +267,7 @@ export function RecordClient({
   const lineSearchInputRef = useRef<HTMLInputElement>(null)
   const partPickerRef = useRef<HTMLDivElement>(null)
   const partSearchInputRef = useRef<HTMLInputElement>(null)
+  const existingSessionRef = useRef<any>(initialSession)
 
   const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -366,6 +367,24 @@ export function RecordClient({
     return linePartTargetsByLine[lineContextId] ?? []
   }, [lineContextId, linePartTargetsByLine])
 
+  useEffect(() => {
+    existingSessionRef.current = initialSession
+  }, [initialSession])
+
+  useEffect(() => {
+    if (!initialSession || !lineContextId) return
+    if (initialSession.lineId !== lineContextId) return
+    setSessionData((prev: any) => {
+      if (
+        prev?.id === initialSession.id &&
+        String(prev?.updatedAt ?? '') === String(initialSession.updatedAt ?? '')
+      ) {
+        return prev
+      }
+      return initialSession
+    })
+  }, [initialSession, initialSession?.id, initialSession?.updatedAt, initialSession?.lineId, lineContextId])
+
   const filteredTargetsForContext = useMemo(() => {
     const q = partSearch.trim().toLowerCase()
     if (!q) return lineTargetsForContext
@@ -459,23 +478,66 @@ export function RecordClient({
   const loadInProgressSessionForLine = useCallback(async (lineId: string, signal?: AbortSignal) => {
     if (!lineId) return null
     try {
-      const thaiTodayStr = formatThaiDateUTCISO(getThaiTodayUTC())
+      const fetchSessionDetailById = async (sessionId: string) => {
+        if (!sessionId) return null
+        const detailRes = await fetch(`/api/production/sessions/${sessionId}`, { signal })
+        if (signal?.aborted || !detailRes.ok) return null
+        const dJson = await detailRes.json()
+        if (signal?.aborted) return null
+        return dJson.data ?? null
+      }
+
+      const pinnedSession = existingSessionRef.current
+      if (pinnedSession?.id && pinnedSession?.lineId === lineId) {
+        const pinnedDetail = await fetchSessionDetailById(String(pinnedSession.id))
+        if (
+          pinnedDetail &&
+          pinnedDetail.status === 'IN_PROGRESS' &&
+          pinnedDetail.lineId === lineId
+        ) {
+          setSessionData(pinnedDetail)
+          return pinnedDetail
+        }
+      }
+
+      const reportingDateStr = formatThaiDateUTCISO(getThaiReportingDateUTC())
       const listRes = await fetch(
-        `/api/production/sessions?lineId=${encodeURIComponent(lineId)}&status=IN_PROGRESS&date=${encodeURIComponent(thaiTodayStr)}`,
+        `/api/production/sessions?lineId=${encodeURIComponent(lineId)}&status=IN_PROGRESS&date=${encodeURIComponent(reportingDateStr)}`,
         { signal },
       )
+      if (signal?.aborted || !listRes.ok) return null
       const listJson = await listRes.json()
       if (signal?.aborted) return null
       const sessions: any[] = listJson.data ?? []
       if (sessions.length === 0) {
-        setSessionData(null)
+        const fallbackSession = existingSessionRef.current
+        if (fallbackSession?.id && fallbackSession?.lineId === lineId && fallbackSession?.status === 'IN_PROGRESS') {
+          const fallbackDetail = await fetchSessionDetailById(String(fallbackSession.id))
+          if (fallbackDetail && fallbackDetail.lineId === lineId) {
+            setSessionData(fallbackDetail)
+            return fallbackDetail
+          }
+          setSessionData((prev: any) => (
+            prev?.id === fallbackSession.id || (prev?.lineId === lineId && prev?.status === 'IN_PROGRESS')
+              ? prev
+              : null
+          ))
+          return fallbackSession
+        }
+        setSessionData((prev: any) => (
+          prev?.lineId === lineId && prev?.status === 'IN_PROGRESS'
+            ? prev
+            : null
+        ))
         return null
       }
-      const detailRes = await fetch(`/api/production/sessions/${sessions[0].id}`, { signal })
-      const dJson = await detailRes.json()
-      if (signal?.aborted) return null
-      if (dJson.data) setSessionData(dJson.data)
-      return dJson.data ?? null
+      const latestSessionId = String(sessions[0]?.id ?? '')
+      const latestDetail = await fetchSessionDetailById(latestSessionId)
+      if (latestDetail) {
+        setSessionData(latestDetail)
+        return latestDetail
+      }
+      return null
     } catch (e: unknown) {
       const name = e instanceof Error ? e.name : ''
       if (name === 'AbortError') return null
@@ -488,7 +550,7 @@ export function RecordClient({
     const ac = new AbortController()
     void loadInProgressSessionForLine(lineContextId, ac.signal)
     return () => ac.abort()
-  }, [lineContextId, watchPartId, loadInProgressSessionForLine])
+  }, [lineContextId, loadInProgressSessionForLine])
 
   useEffect(() => {
     if (defaultPartId && lineTargetsForContext.some((p: any) => p.partId === defaultPartId)) {
