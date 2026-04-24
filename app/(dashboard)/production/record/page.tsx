@@ -159,22 +159,27 @@ export default async function RecordPage({
         }),
       ])
 
-  /** บันทึกล่าสุดต่อสาย (กะ+วันเดียวกับ Session ที่ IN_PROGRESS) — สำหรับแสดงในรายการเลือกสาย */
+  /** บันทึกล่าสุดต่อสาย (วันนี้ตามไทย — ทุกกะ IN_PROGRESS/COMPLETED) — แสดงในรายการเลือกสาย */
   let lineActivityByLineId: Record<
     string,
-    { hourSlot: number; okQty: number; partSamco: number | null; recordTime: string }
+    {
+      hourSlot: number
+      okQty: number
+      partSamco: number | null
+      recordTime: string
+      sessionShiftType: 'DAY' | 'NIGHT'
+    }
   > = {}
   if (!requiresScanPin) {
     const latestRows = await prisma.hourlyRecord.findMany({
       where: {
         session: {
           sessionDate: today,
-          shiftType: shift,
-          status: 'IN_PROGRESS',
+          status: { in: ['IN_PROGRESS', 'COMPLETED'] },
         },
       },
       include: {
-        session: { select: { lineId: true } },
+        session: { select: { lineId: true, shiftType: true } },
         part: { select: { partSamco: true } },
       },
       orderBy: [{ updatedAt: 'desc' }, { hourSlot: 'desc' }],
@@ -183,11 +188,13 @@ export default async function RecordPage({
     for (const r of latestRows) {
       const lid = r.session.lineId
       if (lineActivityByLineId[lid] != null) continue
+      const st = r.session.shiftType
       lineActivityByLineId[lid] = {
         hourSlot: r.hourSlot,
         okQty: r.okQty,
         partSamco: r.part?.partSamco ?? null,
         recordTime: r.recordTime.toISOString(),
+        sessionShiftType: st === 'NIGHT' ? 'NIGHT' : 'DAY',
       }
     }
   }

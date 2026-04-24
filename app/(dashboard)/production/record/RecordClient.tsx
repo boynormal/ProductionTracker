@@ -72,6 +72,8 @@ type LineActivitySnapshot = {
   okQty: number
   partSamco: number | null
   recordTime: string
+  /** กะของ session ที่บันทึกนี้อยู่ — ใช้ map slot→เวลาเริ่มที่ถูกต้อง */
+  sessionShiftType?: 'DAY' | 'NIGHT'
 }
 
 /** สีตามระยะห่างของชั่วโมงที่บันทึกล่าสุด กับชั่วโมงปัจจุบัน (liveSlot): เท่ากัน=เขียว, ย้อน 1 ชม.=เหลือง, นอกนั้น=แดง */
@@ -113,17 +115,27 @@ function getLineActivityMeta(
     /* ignore */
   }
 
+  const recordedShift: 'DAY' | 'NIGHT' =
+    snap.sessionShiftType === 'NIGHT' || snap.sessionShiftType === 'DAY' ? snap.sessionShiftType : shiftType
+  const badgeClass =
+    recordedShift === shiftType
+      ? lineActivityBadgeClass(snap.hourSlot, currentHourSlot)
+      : 'bg-slate-100 text-slate-600'
+
   return {
-    slotLabel: getSlotStartTime(shiftType, snap.hourSlot),
+    slotLabel: getSlotStartTime(recordedShift, snap.hourSlot),
     recordedAtShort,
     partLabel: snap.partSamco != null ? String(snap.partSamco) : '-',
     qtyLabel: typeof snap.okQty === 'number' ? snap.okQty.toLocaleString() : '-',
-    badgeClass: lineActivityBadgeClass(snap.hourSlot, currentHourSlot),
+    badgeClass,
   }
 }
 
 /** บันทึกที่แก้ล่าสุดใน session — สอดคล้อง order updatedAt desc บน server / API line-activity */
-function latestSnapshotFromHourlyRecords(records: any[]): LineActivitySnapshot | null {
+function latestSnapshotFromHourlyRecords(
+  records: any[],
+  sessionShiftType: 'DAY' | 'NIGHT',
+): LineActivitySnapshot | null {
   if (!Array.isArray(records) || records.length === 0) return null
   let best = records[0]!
   const tBest = (r: any) => new Date(r.updatedAt ?? r.createdAt ?? r.recordTime ?? 0).getTime()
@@ -139,6 +151,7 @@ function latestSnapshotFromHourlyRecords(records: any[]): LineActivitySnapshot |
     okQty: Number(best.okQty) || 0,
     partSamco: best.part?.partSamco ?? null,
     recordTime: rt,
+    sessionShiftType,
   }
 }
 interface Props {
@@ -394,7 +407,8 @@ export function RecordClient({
   const displayLineActivityByLineId = useMemo(() => {
     const base = { ...lineActivityMap }
     if (sessionData?.lineId && Array.isArray(sessionData.hourlyRecords) && sessionData.hourlyRecords.length > 0) {
-      const snap = latestSnapshotFromHourlyRecords(sessionData.hourlyRecords)
+      const st: 'DAY' | 'NIGHT' = sessionData.shiftType === 'NIGHT' ? 'NIGHT' : 'DAY'
+      const snap = latestSnapshotFromHourlyRecords(sessionData.hourlyRecords, st)
       if (snap) base[sessionData.lineId] = snap
     }
     return base
