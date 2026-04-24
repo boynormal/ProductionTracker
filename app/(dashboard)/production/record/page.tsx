@@ -177,7 +177,7 @@ export default async function RecordPage({
         session: { select: { lineId: true } },
         part: { select: { partSamco: true } },
       },
-      orderBy: [{ hourSlot: 'desc' }, { updatedAt: 'desc' }],
+      orderBy: [{ updatedAt: 'desc' }, { hourSlot: 'desc' }],
       take: 800,
     })
     for (const r of latestRows) {

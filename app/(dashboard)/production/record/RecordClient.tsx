@@ -9,7 +9,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useI18n } from '@/lib/i18n'
 import { SHIFT_CONFIGS, getCurrentShift, getCurrentHourSlot, getSlotStartTime } from '@/lib/utils/shift'
-import { getThaiIsoDateTimeLocal, getThaiTodayUTC, getThaiReportingDateUTC, formatThaiDateUTCISO, parseThaiCalendarDateUtc } from '@/lib/time-utils'
+import {
+  getThaiIsoDateTimeLocal,
+  getThaiTodayUTC,
+  getThaiReportingDateUTC,
+  formatThaiDateUTCISO,
+  parseThaiCalendarDateUtc,
+  formatInstantBangkok,
+} from '@/lib/time-utils'
 import { buildBreakdownIntervalsFromSlotMinutes } from '@/lib/utils/breakdown-datetime'
 import { Plus, Minus, Factory, Clock, CheckCircle2, XCircle, Wrench, Loader2, Coffee, Search, User, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
@@ -84,37 +91,47 @@ function getLineActivityMeta(
   if (!snap) {
     return {
       slotLabel: noDataLabel,
+      recordedAtShort: '',
       partLabel: '-',
       qtyLabel: '-',
       badgeClass: 'bg-slate-100 text-slate-500',
     }
   }
 
+  let recordedAtShort = ''
+  try {
+    const d = new Date(snap.recordTime)
+    if (!Number.isNaN(d.getTime())) {
+      recordedAtShort = formatInstantBangkok(d, {
+        timeZone: 'Asia/Bangkok',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    }
+  } catch {
+    /* ignore */
+  }
+
   return {
     slotLabel: getSlotStartTime(shiftType, snap.hourSlot),
+    recordedAtShort,
     partLabel: snap.partSamco != null ? String(snap.partSamco) : '-',
     qtyLabel: typeof snap.okQty === 'number' ? snap.okQty.toLocaleString() : '-',
     badgeClass: lineActivityBadgeClass(snap.hourSlot, currentHourSlot),
   }
 }
 
-/** หนึ่งบันทึกล่าสุดต่อ session — สอดคล้อง order hourSlot desc แล้ว updatedAt (เทียบ server page.tsx) */
+/** บันทึกที่แก้ล่าสุดใน session — สอดคล้อง order updatedAt desc บน server / API line-activity */
 function latestSnapshotFromHourlyRecords(records: any[]): LineActivitySnapshot | null {
   if (!Array.isArray(records) || records.length === 0) return null
   let best = records[0]!
-  let bestSlot = Number(best.hourSlot) || 0
+  const tBest = (r: any) => new Date(r.updatedAt ?? r.createdAt ?? r.recordTime ?? 0).getTime()
   for (const r of records) {
-    const hs = Number(r.hourSlot) || 0
-    if (hs > bestSlot) {
-      best = r
-      bestSlot = hs
-      continue
-    }
-    if (hs === bestSlot) {
-      const bu = String(best.updatedAt ?? '')
-      const ru = String(r.updatedAt ?? '')
-      if (ru > bu) best = r
-    }
+    const tb = tBest(best)
+    const tr = tBest(r)
+    if (tr > tb) best = r
+    else if (tr === tb && (Number(r.hourSlot) || 0) > (Number(best.hourSlot) || 0)) best = r
   }
   const rt = best.recordTime != null ? new Date(best.recordTime).toISOString() : new Date().toISOString()
   return {
@@ -272,7 +289,7 @@ export function RecordClient({
       if (!requiresScanPin) void refreshLineActivityMap()
     }
     void refreshLineActivityMap()
-    const timer = setInterval(tick, 30_000)
+    const timer = setInterval(tick, 15_000)
     return () => clearInterval(timer)
   }, [requiresScanPin, refreshLineActivityMap])
 
@@ -1138,12 +1155,19 @@ export function RecordClient({
             const snap = displayLineActivityByLineId[lockedLine.id]
             const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
             return (
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-sm">
-                <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
-                  {meta.slotLabel}
-                </span>
-                <span className="tabular-nums text-indigo-900/90">{meta.partLabel}</span>
-                <span className="tabular-nums text-indigo-950">{meta.qtyLabel}</span>
+              <div className="flex shrink-0 flex-col items-end gap-0.5 text-sm">
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
+                    {meta.slotLabel}
+                  </span>
+                  <span className="tabular-nums text-indigo-900/90">{meta.partLabel}</span>
+                  <span className="tabular-nums text-indigo-950">{meta.qtyLabel}</span>
+                </div>
+                {meta.recordedAtShort ? (
+                  <span className="text-[10px] font-medium tabular-nums text-indigo-900/75">
+                    {locale === 'th' ? `ล่าสุด ${meta.recordedAtShort} น.` : `Last save ${meta.recordedAtShort}`}
+                  </span>
+                ) : null}
               </div>
             )
           })()}
@@ -1267,12 +1291,19 @@ export function RecordClient({
                               <div className="min-w-0 flex-1">
                                 <div className="truncate font-medium text-slate-800">{ln.lineCode}</div>
                               </div>
-                              <div className="ml-auto flex shrink-0 items-center justify-end gap-2 text-sm">
-                                <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
-                                  {meta.slotLabel}
-                                </span>
-                                <span className="w-14 text-right tabular-nums text-slate-600">{meta.partLabel}</span>
-                                <span className="w-14 text-right tabular-nums text-slate-800">{meta.qtyLabel}</span>
+                              <div className="ml-auto flex shrink-0 flex-col items-end gap-0.5 text-sm">
+                                <div className="flex items-center justify-end gap-2">
+                                  <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
+                                    {meta.slotLabel}
+                                  </span>
+                                  <span className="w-14 text-right tabular-nums text-slate-600">{meta.partLabel}</span>
+                                  <span className="w-14 text-right tabular-nums text-slate-800">{meta.qtyLabel}</span>
+                                </div>
+                                {meta.recordedAtShort ? (
+                                  <span className="text-[10px] tabular-nums text-slate-500">
+                                    {locale === 'th' ? `ล่าสุด ${meta.recordedAtShort} น.` : `Last ${meta.recordedAtShort}`}
+                                  </span>
+                                ) : null}
                               </div>
                             </button>
                           </li>
@@ -1297,12 +1328,19 @@ export function RecordClient({
                       const snap = displayLineActivityByLineId[selectedLineId]
                       const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
                       return (
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-sm">
-                          <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
-                            {meta.slotLabel}
-                          </span>
-                          <span className="tabular-nums text-slate-600">{meta.partLabel}</span>
-                          <span className="tabular-nums text-slate-800">{meta.qtyLabel}</span>
+                        <div className="flex shrink-0 flex-col items-end gap-0.5 text-sm">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            <span className={cn('rounded-full px-2 py-0.5 font-medium tabular-nums', meta.badgeClass)}>
+                              {meta.slotLabel}
+                            </span>
+                            <span className="tabular-nums text-slate-600">{meta.partLabel}</span>
+                            <span className="tabular-nums text-slate-800">{meta.qtyLabel}</span>
+                          </div>
+                          {meta.recordedAtShort ? (
+                            <span className="text-[10px] font-medium tabular-nums text-slate-500">
+                              {locale === 'th' ? `ล่าสุด ${meta.recordedAtShort} น.` : `Last save ${meta.recordedAtShort}`}
+                            </span>
+                          ) : null}
                         </div>
                       )
                     })()}

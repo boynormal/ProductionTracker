@@ -34,7 +34,8 @@ export async function GET(req: NextRequest) {
       session: { select: { lineId: true } },
       part: { select: { partSamco: true } },
     },
-    orderBy: [{ hourSlot: 'desc' }, { updatedAt: 'desc' }],
+    /** ล่าสุดตามเวลาแก้ไขจริง — ไม่ใช้แค่ hourSlot สูงสุด (กัน UI ค้างช่อง OT ท้ายกะทั้งที่เพิ่งแก้ช่องก่อนหน้า) */
+    orderBy: [{ updatedAt: 'desc' }, { hourSlot: 'desc' }],
     take: 800,
   })
 
