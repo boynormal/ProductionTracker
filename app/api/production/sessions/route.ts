@@ -226,6 +226,50 @@ export async function POST(req: NextRequest) {
     const reportingDate = getThaiReportingDateUTC(nowMs)
     const shiftType   = getCurrentShift()
 
+    /** ห้ามเปิดสองกะพร้อมในวันเดียวกัน (sessionDate เดียวกัน) — กันข้อมูล hourly ปนกันระหว่างกริดกะ */
+    if (shiftType === 'NIGHT') {
+      const dayOpen = await prisma.productionSession.findFirst({
+        where: {
+          lineId: body.lineId,
+          sessionDate,
+          shiftType: 'DAY',
+          status: 'IN_PROGRESS',
+        },
+        select: { id: true },
+      })
+      if (dayOpen) {
+        return NextResponse.json(
+          {
+            error:
+              'ยังมี Session กะเช้าเปิดอยู่ (IN_PROGRESS) — กรุณาปิดกะเช้าในระบบก่อนเปิดหรือบันทึกกะดึก',
+            code: 'DAY_SESSION_STILL_OPEN',
+          },
+          { status: 409 },
+        )
+      }
+    }
+    if (shiftType === 'DAY') {
+      const nightOpen = await prisma.productionSession.findFirst({
+        where: {
+          lineId: body.lineId,
+          sessionDate,
+          shiftType: 'NIGHT',
+          status: 'IN_PROGRESS',
+        },
+        select: { id: true },
+      })
+      if (nightOpen) {
+        return NextResponse.json(
+          {
+            error:
+              'ยังมี Session กะดึกเปิดอยู่ (IN_PROGRESS) — กรุณาปิดกะดึกในระบบก่อนเปิดกะเช้า',
+            code: 'NIGHT_SESSION_STILL_OPEN',
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     // Session unique: 1 Line ต่อ 1 กะ ต่อ 1 วัน
     const existing = await prisma.productionSession.findUnique({
       where: {
