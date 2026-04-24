@@ -386,16 +386,32 @@ export function RecordClient({
   useEffect(() => {
     if (!initialSession || !lineContextId) return
     if (initialSession.lineId !== lineContextId) return
+    /** อย่า sync session กะอื่นเข้ามา และอย่าทับ client ที่เพิ่งดึงจาก API ด้วย RSC ที่เก่ากว่า */
+    if (initialSession.shiftType !== liveShift) return
+
     setSessionData((prev: any) => {
-      if (
-        prev?.id === initialSession.id &&
-        String(prev?.updatedAt ?? '') === String(initialSession.updatedAt ?? '')
-      ) {
-        return prev
-      }
-      return initialSession
+      if (!prev?.id) return initialSession
+      if (prev.id !== initialSession.id) return initialSession
+
+      const prevU = String(prev.updatedAt ?? '')
+      const initU = String(initialSession.updatedAt ?? '')
+      if (initU > prevU) return initialSession
+
+      const prevHr = Array.isArray(prev.hourlyRecords) ? prev.hourlyRecords.length : 0
+      const initHr = Array.isArray(initialSession.hourlyRecords) ? initialSession.hourlyRecords.length : 0
+      if (initU === prevU && initHr > prevHr) return initialSession
+
+      return prev
     })
-  }, [initialSession, initialSession?.id, initialSession?.updatedAt, initialSession?.lineId, lineContextId])
+  }, [
+    initialSession,
+    initialSession?.id,
+    initialSession?.updatedAt,
+    initialSession?.lineId,
+    initialSession?.shiftType,
+    lineContextId,
+    liveShift,
+  ])
 
   const filteredTargetsForContext = useMemo(() => {
     const q = partSearch.trim().toLowerCase()
@@ -541,7 +557,11 @@ export function RecordClient({
           fallbackSession?.shiftType === shiftNow
         ) {
           const fallbackDetail = await fetchSessionDetailById(String(fallbackSession.id))
-          if (fallbackDetail && fallbackDetail.lineId === lineId) {
+          if (
+            fallbackDetail &&
+            fallbackDetail.lineId === lineId &&
+            fallbackDetail.shiftType === shiftNow
+          ) {
             setSessionData(fallbackDetail)
             return fallbackDetail
           }
@@ -561,7 +581,7 @@ export function RecordClient({
       }
       const latestSessionId = String(sessions[0]?.id ?? '')
       const latestDetail = await fetchSessionDetailById(latestSessionId)
-      if (latestDetail) {
+      if (latestDetail && latestDetail.shiftType === shiftNow) {
         setSessionData(latestDetail)
         return latestDetail
       }
@@ -578,7 +598,7 @@ export function RecordClient({
     const ac = new AbortController()
     void loadInProgressSessionForLine(lineContextId, ac.signal)
     return () => ac.abort()
-  }, [lineContextId, loadInProgressSessionForLine])
+  }, [lineContextId, liveShift, loadInProgressSessionForLine])
 
   useEffect(() => {
     if (defaultPartId && lineTargetsForContext.some((p: any) => p.partId === defaultPartId)) {
