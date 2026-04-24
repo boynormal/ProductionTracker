@@ -697,12 +697,13 @@ export function RecordClient({
     }
   }, [])
 
+  /** โหลด session ใหม่เมื่อเปลี่ยนสาย/กะ หรือเปลี่ยน Part — ให้ hourlyRecords ครบเพื่อโชว์ช่องที่มี Part อื่นแล้ว */
   useEffect(() => {
     if (!lineContextId) return
     const ac = new AbortController()
     void loadInProgressSessionForLine(lineContextId, ac.signal)
     return () => ac.abort()
-  }, [lineContextId, liveShift, loadInProgressSessionForLine])
+  }, [lineContextId, liveShift, watchPartId, loadInProgressSessionForLine])
 
   useEffect(() => {
     if (!lineContextId) {
@@ -944,6 +945,7 @@ export function RecordClient({
       try { json = JSON.parse(text) } catch { throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`) }
       if (!res.ok) {
         if (res.status === 409 && (json.existingPartSamco != null || json.existingPartName)) {
+          await loadInProgressSessionForLine(lid)
           const who =
             json.existingPartSamco != null
               ? `SAMCO ${json.existingPartSamco}`
@@ -1581,7 +1583,7 @@ export function RecordClient({
                     'flex flex-col items-center rounded-lg border py-1.5 px-1 text-xs sm:text-sm font-medium transition-all relative min-h-[4.75rem]',
                     rec
                       ? 'border-green-400 bg-green-50 text-green-700 opacity-60 cursor-default'
-                      : disabled && 'opacity-30 cursor-not-allowed',
+                      : disabled && !(otherPart && anyRec) && 'opacity-30 cursor-not-allowed',
                     !rec && otherPart && anyRec
                       ? 'border-amber-400 bg-amber-50 text-amber-900'
                       : !rec && isActive
@@ -1697,7 +1699,7 @@ export function RecordClient({
                         'flex flex-col items-center rounded-lg border py-1.5 px-1 text-xs sm:text-sm font-medium transition-all relative min-h-[4.75rem]',
                         rec
                           ? 'border-green-400 bg-green-50 text-green-700 opacity-60 cursor-default'
-                          : disabled && 'opacity-30 cursor-not-allowed',
+                          : disabled && !(otherPart && anyRec) && 'opacity-30 cursor-not-allowed',
                         !rec && otherPart && anyRec
                           ? 'border-amber-400 bg-amber-50 text-amber-900'
                           : !rec && isActive
