@@ -596,6 +596,19 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
 
   const groupedLines = groupSessionsByLine(filteredSessions, filteredLines)
 
+  /** รายการกะที่ยังเปิด — ใช้แสดงแถบช่วยหาปุ่มปิดกะ */
+  const openShiftBannerLines = useMemo(
+    () =>
+      filteredSessions
+        .filter((s) => s.status === 'IN_PROGRESS')
+        .map((s) => ({
+          id: String(s.id),
+          shiftType: s.shiftType === 'NIGHT' ? 'NIGHT' as const : 'DAY' as const,
+          lineCode: String(s.line?.lineCode ?? s.lineId ?? '—'),
+        })),
+    [filteredSessions],
+  )
+
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
       IN_PROGRESS: 'bg-blue-100 text-blue-700',
@@ -746,6 +759,47 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
           </div>
         )}
       </div>
+
+      {openShiftBannerLines.length > 0 ? (
+        <div
+          role="status"
+          className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-950 shadow-sm"
+        >
+          <p className="font-semibold">
+            {locale === 'th'
+              ? `พบ ${openShiftBannerLines.length} กะที่ยังกำลังผลิตในวันที่เลือก`
+              : `${openShiftBannerLines.length} shift(s) still in progress for the selected date.`}
+          </p>
+          <p className="mt-1 leading-relaxed">
+            {locale === 'th'
+              ? 'ปุ่มสีน้ำเงิน «ปิดกะ» อยู่ในแถวของสายนั้น — ใต้ตัวเลขในคอลัมน์ «กะเช้า» หรือ «กะดึก» ตามกะที่เปิด (หัวตารางต้องมีคำว่า กะเช้า / กะดึก แยกคอลัมน์)'
+              : 'Blue «Close shift» sits on that line’s row, under the numbers in the Day or Night column (table must show separate Day / Night columns).'}
+          </p>
+          <ul className="mt-2 list-inside list-disc text-xs text-blue-900/95">
+            {openShiftBannerLines.map((r) => (
+              <li key={r.id}>
+                {locale === 'th' ? 'สาย' : 'Line'}{' '}
+                <span className="font-mono font-semibold">{r.lineCode}</span>
+                {' · '}
+                {r.shiftType === 'NIGHT'
+                  ? locale === 'th'
+                    ? 'กะดึก'
+                    : 'Night'
+                  : locale === 'th'
+                    ? 'กะเช้า'
+                    : 'Day'}
+              </li>
+            ))}
+          </ul>
+          {!canCloseSession ? (
+            <p className="mt-2 text-xs font-medium text-amber-900">
+              {locale === 'th'
+                ? 'บัญชีนี้ยังไม่มีสิทธิ์ปิด session — ติดต่อ Admin (สิทธิ์ api.production.session.write)'
+                : 'This account cannot close sessions; ask Admin for api.production.session.write.'}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Table */}
       {groupedLines.length === 0 && !loading ? (
