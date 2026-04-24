@@ -97,6 +97,33 @@ function getLineActivityMeta(
     badgeClass: lineActivityBadgeClass(snap.hourSlot, currentHourSlot),
   }
 }
+
+/** หนึ่งบันทึกล่าสุดต่อ session — สอดคล้อง order hourSlot desc แล้ว updatedAt (เทียบ server page.tsx) */
+function latestSnapshotFromHourlyRecords(records: any[]): LineActivitySnapshot | null {
+  if (!Array.isArray(records) || records.length === 0) return null
+  let best = records[0]!
+  let bestSlot = Number(best.hourSlot) || 0
+  for (const r of records) {
+    const hs = Number(r.hourSlot) || 0
+    if (hs > bestSlot) {
+      best = r
+      bestSlot = hs
+      continue
+    }
+    if (hs === bestSlot) {
+      const bu = String(best.updatedAt ?? '')
+      const ru = String(r.updatedAt ?? '')
+      if (ru > bu) best = r
+    }
+  }
+  const rt = best.recordTime != null ? new Date(best.recordTime).toISOString() : new Date().toISOString()
+  return {
+    hourSlot: Number(best.hourSlot) || 0,
+    okQty: Number(best.okQty) || 0,
+    partSamco: best.part?.partSamco ?? null,
+    recordTime: rt,
+  }
+}
 interface Props {
   machines: any[]
   problemCategories: any[]
@@ -205,16 +232,49 @@ export function RecordClient({
   const [liveShift, setLiveShift] = useState<'DAY' | 'NIGHT'>(() => getCurrentShift())
   const [liveSlot,  setLiveSlot]  = useState<number>(() => getCurrentHourSlot(getCurrentShift()))
 
+  /** บันทึกล่าสุดต่อสาย — รีเฟรชจาก API แทน props SSR ที่ค้าง */
+  const [lineActivityMap, setLineActivityMap] = useState<Record<string, LineActivitySnapshot>>(() => ({
+    ...(lineActivityByLineId ?? {}),
+  }))
+  const lastSyncedLineActivityJson = useRef<string>('')
+
+  const refreshLineActivityMap = useCallback(async () => {
+    if (requiresScanPin) return
+    try {
+      const res = await fetch('/api/production/line-activity')
+      if (!res.ok) return
+      const j = await res.json()
+      if (j?.data && typeof j.data === 'object') {
+        setLineActivityMap(j.data as Record<string, LineActivitySnapshot>)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [requiresScanPin])
+
   useEffect(() => {
-    const refresh = () => {
+    const j = JSON.stringify(lineActivityByLineId ?? {})
+    if (j === lastSyncedLineActivityJson.current) return
+    lastSyncedLineActivityJson.current = j
+    try {
+      setLineActivityMap(JSON.parse(j) as Record<string, LineActivitySnapshot>)
+    } catch {
+      setLineActivityMap({ ...(lineActivityByLineId ?? {}) })
+    }
+  }, [lineActivityByLineId])
+
+  useEffect(() => {
+    const tick = () => {
       const shift = getCurrentShift()
-      const slot  = getCurrentHourSlot(shift)
+      const slot = getCurrentHourSlot(shift)
       setLiveShift(shift)
       setLiveSlot(slot)
+      if (!requiresScanPin) void refreshLineActivityMap()
     }
-    const timer = setInterval(refresh, 30_000)
+    void refreshLineActivityMap()
+    const timer = setInterval(tick, 30_000)
     return () => clearInterval(timer)
-  }, [])
+  }, [requiresScanPin, refreshLineActivityMap])
 
   const shiftConfig = SHIFT_CONFIGS[liveShift]
   const minSlot     = Math.max(1, liveSlot - 1)
@@ -312,6 +372,16 @@ export function RecordClient({
     }
     return formatThaiDateUTCISO(getThaiTodayUTC())
   }, [sessionData?.sessionDate])
+
+  /** รวม snapshot จาก API + ทับด้วย session ปัจจุบัน (หลังบันทึก / โหลด session ล่าสุด) */
+  const displayLineActivityByLineId = useMemo(() => {
+    const base = { ...lineActivityMap }
+    if (sessionData?.lineId && Array.isArray(sessionData.hourlyRecords) && sessionData.hourlyRecords.length > 0) {
+      const snap = latestSnapshotFromHourlyRecords(sessionData.hourlyRecords)
+      if (snap) base[sessionData.lineId] = snap
+    }
+    return base
+  }, [lineActivityMap, sessionData])
 
 
   const recordedMap = useMemo(() => {
@@ -1065,7 +1135,7 @@ export function RecordClient({
             </span>
           </div>
           {(() => {
-            const snap = lineActivityByLineId[lockedLine.id]
+            const snap = displayLineActivityByLineId[lockedLine.id]
             const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
             return (
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-sm">
@@ -1176,7 +1246,7 @@ export function RecordClient({
                       </li>
                     ) : (
                       filteredLines.map((ln: any) => {
-                        const snap = lineActivityByLineId[ln.id]
+                        const snap = displayLineActivityByLineId[ln.id]
                         const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
                         return (
                           <li key={ln.id} role="presentation">
@@ -1224,7 +1294,7 @@ export function RecordClient({
                       <p className="truncate text-base font-bold text-blue-950">{selectedLine.lineCode}</p>
                     </div>
                     {(() => {
-                      const snap = lineActivityByLineId[selectedLineId]
+                      const snap = displayLineActivityByLineId[selectedLineId]
                       const meta = getLineActivityMeta(snap, t('recordNoDataYet'), liveShift, liveSlot)
                       return (
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-sm">
