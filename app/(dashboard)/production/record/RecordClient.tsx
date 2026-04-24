@@ -499,31 +499,47 @@ export function RecordClient({
         return dJson.data ?? null
       }
 
+      const shiftNow = getCurrentShift()
+      const sessionDateStr = formatThaiDateUTCISO(getThaiTodayUTC())
+      const reportingDateStr = formatThaiDateUTCISO(getThaiReportingDateUTC())
+
       const pinnedSession = existingSessionRef.current
       if (pinnedSession?.id && pinnedSession?.lineId === lineId) {
-        const pinnedDetail = await fetchSessionDetailById(String(pinnedSession.id))
-        if (
-          pinnedDetail &&
-          pinnedDetail.status === 'IN_PROGRESS' &&
-          pinnedDetail.lineId === lineId
-        ) {
-          setSessionData(pinnedDetail)
-          return pinnedDetail
+        const pinShift = pinnedSession.shiftType as 'DAY' | 'NIGHT' | undefined
+        if (!pinShift || pinShift === shiftNow) {
+          const pinnedDetail = await fetchSessionDetailById(String(pinnedSession.id))
+          if (
+            pinnedDetail &&
+            pinnedDetail.status === 'IN_PROGRESS' &&
+            pinnedDetail.lineId === lineId &&
+            pinnedDetail.shiftType === shiftNow
+          ) {
+            setSessionData(pinnedDetail)
+            return pinnedDetail
+          }
         }
       }
 
-      const reportingDateStr = formatThaiDateUTCISO(getThaiReportingDateUTC())
-      const listRes = await fetch(
-        `/api/production/sessions?lineId=${encodeURIComponent(lineId)}&status=IN_PROGRESS&date=${encodeURIComponent(reportingDateStr)}`,
-        { signal },
-      )
+      const listParams = new URLSearchParams({
+        lineId,
+        status: 'IN_PROGRESS',
+        date: reportingDateStr,
+        sessionDate: sessionDateStr,
+        shiftType: shiftNow,
+      })
+      const listRes = await fetch(`/api/production/sessions?${listParams.toString()}`, { signal })
       if (signal?.aborted || !listRes.ok) return null
       const listJson = await listRes.json()
       if (signal?.aborted) return null
       const sessions: any[] = listJson.data ?? []
       if (sessions.length === 0) {
         const fallbackSession = existingSessionRef.current
-        if (fallbackSession?.id && fallbackSession?.lineId === lineId && fallbackSession?.status === 'IN_PROGRESS') {
+        if (
+          fallbackSession?.id &&
+          fallbackSession?.lineId === lineId &&
+          fallbackSession?.status === 'IN_PROGRESS' &&
+          fallbackSession?.shiftType === shiftNow
+        ) {
           const fallbackDetail = await fetchSessionDetailById(String(fallbackSession.id))
           if (fallbackDetail && fallbackDetail.lineId === lineId) {
             setSessionData(fallbackDetail)

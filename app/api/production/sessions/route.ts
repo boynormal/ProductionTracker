@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
   const status    = searchParams.get('status')
   const lineId    = searchParams.get('lineId')
   const detailed  = searchParams.get('detailed') === '1'
+  /** Optional: align list with record page / unique key (sessionDate + shiftType + lineId) */
+  const sessionDateStr = searchParams.get('sessionDate')
+  const shiftTypeRaw   = searchParams.get('shiftType')
 
   const where: any = {}
   if (machineId) where.machineId = machineId
@@ -66,6 +69,18 @@ export async function GET(req: NextRequest) {
     const dayStart = parseThaiPickerDateToUTC(date)
     if (!dayStart) return NextResponse.json({ error: 'Invalid date' }, { status: 400 })
     Object.assign(where, reportingDateRangeWhere(dayStart, dayEndExclusiveUTC(dayStart), WITH_LEGACY_SESSION_DATE_FALLBACK))
+  }
+  if (sessionDateStr) {
+    const sd = parseThaiPickerDateToUTC(sessionDateStr)
+    if (!sd) return NextResponse.json({ error: 'sessionDate must be YYYY-MM-DD' }, { status: 400 })
+    where.sessionDate = sd
+  }
+  if (shiftTypeRaw) {
+    const st = shiftTypeRaw.trim().toUpperCase()
+    if (st !== 'DAY' && st !== 'NIGHT') {
+      return NextResponse.json({ error: 'shiftType must be DAY or NIGHT' }, { status: 400 })
+    }
+    where.shiftType = st
   }
 
   const include = detailed
