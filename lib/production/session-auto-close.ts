@@ -1,7 +1,5 @@
 import { getThaiHour, getThaiMinute, getThaiTodayUTC, getThaiDaysAgoUTC, formatThaiDateUTCISO, type ShiftType } from '@/lib/time-utils'
 
-const HARD_CLOSE_MINUTES = [15, 20, 25] as const
-
 export type AutoCloseMode = 'idle' | 'soft_checkpoint' | 'hard_close'
 
 export type AutoCloseWindow =
@@ -23,10 +21,26 @@ export type AutoCloseWindow =
       reportingDateKeys: string[]
     }
 
+/** Thai time: DAY hard-close band — from 20:15 through 23:59 (any minute). */
+function isDayHardCloseBand(hour: number, minute: number): boolean {
+  if (hour >= 21 && hour <= 23) return true
+  if (hour === 20 && minute >= 15) return true
+  return false
+}
+
+/** Thai time: NIGHT hard-close band — from 08:15 through 11:59 for yesterday's reporting date. */
+function isNightHardCloseBand(hour: number, minute: number): boolean {
+  if (hour >= 9 && hour <= 11) return true
+  if (hour === 8 && minute >= 15) return true
+  return false
+}
+
 /**
  * Auto-close policy:
- * - Soft checkpoint only: DAY 17:15 / NIGHT 05:15
- * - Hard close windows (retry): DAY 20:15,20,25 / NIGHT 08:15,20,25
+ * - Soft checkpoint only (log, no status change): DAY 17:15 / NIGHT 05:15
+ * - Hard close (COMPLETED): continuous Thai-time bands so infrequent cron still catches sessions
+ *   - DAY: 20:15–23:59, reportingDate = Thai "today"
+ *   - NIGHT: 08:15–11:59, reportingDate = Thai "yesterday"
  */
 export function resolveAutoCloseWindow(nowMs: number = Date.now()): AutoCloseWindow {
   const hour = getThaiHour(nowMs)
@@ -54,10 +68,10 @@ export function resolveAutoCloseWindow(nowMs: number = Date.now()): AutoCloseWin
     }
   }
 
-  if (hour === 20 && HARD_CLOSE_MINUTES.includes(minute as (typeof HARD_CLOSE_MINUTES)[number])) {
+  if (isDayHardCloseBand(hour, minute)) {
     return {
       mode: 'hard_close',
-      reason: `DAY_HARD_CLOSE_20_${String(minute).padStart(2, '0')}`,
+      reason: 'DAY_HARD_CLOSE_BAND_20_15_TO_23_59',
       shiftType: 'DAY',
       nowHour: hour,
       nowMinute: minute,
@@ -66,10 +80,10 @@ export function resolveAutoCloseWindow(nowMs: number = Date.now()): AutoCloseWin
     }
   }
 
-  if (hour === 8 && HARD_CLOSE_MINUTES.includes(minute as (typeof HARD_CLOSE_MINUTES)[number])) {
+  if (isNightHardCloseBand(hour, minute)) {
     return {
       mode: 'hard_close',
-      reason: `NIGHT_HARD_CLOSE_08_${String(minute).padStart(2, '0')}`,
+      reason: 'NIGHT_HARD_CLOSE_BAND_08_15_TO_11_59',
       shiftType: 'NIGHT',
       nowHour: hour,
       nowMinute: minute,
@@ -85,4 +99,3 @@ export function resolveAutoCloseWindow(nowMs: number = Date.now()): AutoCloseWin
     nowMinute: minute,
   }
 }
-

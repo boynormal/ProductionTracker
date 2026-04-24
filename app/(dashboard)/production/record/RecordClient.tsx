@@ -5,6 +5,7 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useI18n } from '@/lib/i18n'
 import { SHIFT_CONFIGS, getCurrentShift, getCurrentHourSlot, getSlotStartTime } from '@/lib/utils/shift'
@@ -224,6 +225,8 @@ export function RecordClient({
   const [sessionData, setSessionData] = useState<any>(initialSession)
   const [creatingSession, setCreatingSession] = useState(false)
   const [sessionGuardWarning, setSessionGuardWarning] = useState<SessionGuardWarning | null>(null)
+  /** อีกกะหนึ่ง (DAY/NIGHT) ยัง IN_PROGRESS บน sessionDate เดียวกัน — บังคับปิดก่อนบันทึก */
+  const [siblingShiftOpen, setSiblingShiftOpen] = useState<{ id: string; shiftType: 'DAY' | 'NIGHT' } | null>(null)
   /** สายที่เลือก (หรือ locked จาก QR) */
   const [selectedLineId, setSelectedLineId] = useState<string>(() => lockedLine?.id ?? initialLineId ?? '')
 
@@ -601,6 +604,52 @@ export function RecordClient({
   }, [lineContextId, liveShift, loadInProgressSessionForLine])
 
   useEffect(() => {
+    if (!lineContextId) {
+      setSiblingShiftOpen(null)
+      return
+    }
+    const ac = new AbortController()
+    const compareShift: 'DAY' | 'NIGHT' =
+      sessionData?.status === 'IN_PROGRESS' &&
+      (sessionData.shiftType === 'DAY' || sessionData.shiftType === 'NIGHT')
+        ? sessionData.shiftType
+        : liveShift
+    ;(async () => {
+      try {
+        const params = new URLSearchParams({
+          lineId: lineContextId,
+          sessionDate: recordDateIso,
+          status: 'IN_PROGRESS',
+        })
+        const res = await fetch(`/api/production/sessions?${params}`, { signal: ac.signal })
+        if (ac.signal.aborted) return
+        if (!res.ok) {
+          setSiblingShiftOpen(null)
+          return
+        }
+        const j = await res.json()
+        if (ac.signal.aborted) return
+        const list: any[] = Array.isArray(j.data) ? j.data : []
+        const other = list.find(
+          (s) =>
+            s.status === 'IN_PROGRESS' &&
+            (s.shiftType === 'DAY' || s.shiftType === 'NIGHT') &&
+            s.shiftType !== compareShift,
+        )
+        if (other?.id) {
+          setSiblingShiftOpen({ id: String(other.id), shiftType: other.shiftType })
+        } else {
+          setSiblingShiftOpen(null)
+        }
+      } catch (e: unknown) {
+        const name = e instanceof Error ? e.name : ''
+        if (name !== 'AbortError' && !ac.signal.aborted) setSiblingShiftOpen(null)
+      }
+    })()
+    return () => ac.abort()
+  }, [lineContextId, recordDateIso, sessionData?.status, sessionData?.shiftType, liveShift])
+
+  useEffect(() => {
     if (defaultPartId && lineTargetsForContext.some((p: any) => p.partId === defaultPartId)) {
       setValue('partId', defaultPartId)
     }
@@ -711,6 +760,15 @@ export function RecordClient({
     const lid = lineContextId
     if (!lid) {
       toast.error(locale === 'th' ? 'เลือกสายการผลิตก่อน' : 'Select a production line first.')
+      return
+    }
+
+    if (siblingShiftOpen) {
+      toast.error(
+        locale === 'th'
+          ? 'มีกะอื่นที่ยังไม่ปิดบนวันเดียวกัน — ให้ผู้มีสิทธิ์ปิดกะนั้นก่อน (ดูแถบแจ้งเตือนด้านบน หรือไปที่ประวัติ)'
+          : 'Another shift is still open for this line and day — close it first (see banner or Production history).',
+      )
       return
     }
 
@@ -965,6 +1023,34 @@ export function RecordClient({
             {locale === 'th'
               ? `สาย ${sessionGuardWarning.lineCode} (${sessionGuardWarning.lineName}) / โหมด ${sessionGuardWarning.mode}`
               : `Line ${sessionGuardWarning.lineCode} (${sessionGuardWarning.lineName}) / mode ${sessionGuardWarning.mode}`}
+          </p>
+        </div>
+      ) : null}
+
+      {siblingShiftOpen ? (
+        <div className="rounded-xl border border-orange-400 bg-orange-50 px-4 py-3 text-sm text-orange-950 shadow-sm">
+          <p className="font-semibold">
+            {locale === 'th' ? 'กะอื่นยังเปิดอยู่ (IN_PROGRESS)' : 'Another shift is still open (IN_PROGRESS)'}
+          </p>
+          <p className="mt-1 leading-relaxed">
+            {locale === 'th'
+              ? siblingShiftOpen.shiftType === 'DAY'
+                ? 'กะเช้ายังไม่ปิด — ให้ผู้มีสิทธิ์ปิดกะเช้าก่อนบันทึกกะนี้หรือก่อนเปิด session กะถัดไป เพื่อไม่ให้ข้อมูลสับสน'
+                : 'กะดึกยังไม่ปิด — ให้ผู้มีสิทธิ์ปิดกะดึกก่อนบันทึกกะนี้หรือก่อนเปิด session กะถัดไป เพื่อไม่ให้ข้อมูลสับสน'
+              : siblingShiftOpen.shiftType === 'DAY'
+                ? 'Day shift is still open — an authorized user must complete the day session before recording or starting the next shift.'
+                : 'Night shift is still open — an authorized user must complete the night session before recording or starting the next shift.'}
+          </p>
+          <p className="mt-1 text-xs text-orange-900/85">
+            {locale === 'th' ? `Session ที่ค้าง: ${siblingShiftOpen.id}` : `Open session id: ${siblingShiftOpen.id}`}
+          </p>
+          <p className="mt-2">
+            <Link
+              href="/production/history"
+              className="font-medium text-orange-900 underline underline-offset-2 hover:text-orange-950"
+            >
+              {locale === 'th' ? 'ไปหน้าประวัติการผลิตเพื่อปิดกะ' : 'Open Production history to close the shift'}
+            </Link>
           </p>
         </div>
       ) : null}
@@ -1787,7 +1873,7 @@ export function RecordClient({
               : 'This hour is already saved for this part — change hour or part to save again.'}
           </p>
         ) : null}
-        <button type="submit" disabled={submitting || creatingSession || !operatorId || !!selectedSlotRec}
+        <button type="submit" disabled={submitting || creatingSession || !operatorId || !!selectedSlotRec || !!siblingShiftOpen}
           className="w-full rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 shadow-md shadow-blue-200">
           <span className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center" aria-hidden>
             {submitting || creatingSession ? (

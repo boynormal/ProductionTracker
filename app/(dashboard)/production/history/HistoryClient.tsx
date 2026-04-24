@@ -398,9 +398,11 @@ interface Props {
   lines: LineRow[]
   defaultDate: string
   userRole?: string
+  /** สิทธิ์ PATCH session เป็น COMPLETED (ปุ่มปิดกะ) */
+  canCloseSession?: boolean
 }
 
-export function HistoryClient({ initialSessions, lines, defaultDate, userRole }: Props) {
+export function HistoryClient({ initialSessions, lines, defaultDate, userRole, canCloseSession = false }: Props) {
   const { t, locale }   = useI18n()
   const [sessions, setSessions]         = useState(initialSessions)
   const [selectedDate, setSelectedDate] = useState(defaultDate)
@@ -412,6 +414,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
   const [editingId, setEditingId]       = useState<string | null>(null)
   /** รายละเอียดรายชั่วโมง (พนักงาน / สรุป Part / กริด) — ยุบเป็นค่าเริ่มต้น */
   const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(() => new Set())
+  const [closingSessionId, setClosingSessionId] = useState<string | null>(null)
 
   const toggleLineDetail = useCallback((id: string) => {
     setExpandedLineIds((prev) => {
@@ -492,6 +495,47 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
       .catch(() => toast.error(locale === 'th' ? 'โหลดข้อมูลไม่สำเร็จ' : 'Failed to load'))
   }, [selectedDate, lineFilter, locale])
 
+  const closeProductionSession = useCallback(
+    async (sessionId: string) => {
+      const msg =
+        locale === 'th'
+          ? 'ยืนยันการปิดกะนี้เป็นเสร็จสิ้น (COMPLETED) หรือไม่?'
+          : 'Mark this shift session as completed (COMPLETED)?'
+      if (!window.confirm(msg)) return
+      setClosingSessionId(sessionId)
+      try {
+        const r = await fetch(`/api/production/sessions/${sessionId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'COMPLETED' }),
+        })
+        let j: Record<string, unknown> = {}
+        try {
+          j = (await r.json()) as Record<string, unknown>
+        } catch {
+          /* ignore */
+        }
+        if (!r.ok) {
+          const err =
+            typeof j.error === 'string'
+              ? j.error
+              : locale === 'th'
+                ? 'ปิดกะไม่สำเร็จ'
+                : 'Failed to close shift'
+          toast.error(err)
+          return
+        }
+        toast.success(locale === 'th' ? 'ปิดกะแล้ว' : 'Shift closed')
+        await reloadSessions()
+      } catch {
+        toast.error(locale === 'th' ? 'ปิดกะไม่สำเร็จ' : 'Failed to close shift')
+      } finally {
+        setClosingSessionId(null)
+      }
+    },
+    [locale, reloadSessions],
+  )
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -551,13 +595,21 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
               ? 'หัวหน้างาน / วิศวกร / ผู้จัดการ / Admin: ขยายรายละเอียดสายก่อน แล้วคลิกช่องรายชั่วโมงเพื่อแก้ไข Part, OK, Breakdown, NG และหมายเหตุ'
               : 'Supervisor / Engineer / Manager / Admin: expand a line first, then click an hourly cell to edit part, OK, breakdown, NG, and remark.'}
           </p>
-        ) : (
+        ) : null}
+        {canCloseSession ? (
+          <p className="text-xs text-slate-400 mt-1">
+            {locale === 'th'
+              ? 'ผู้มีสิทธิ์ปิด session: ขยายรายละเอียดสาย แล้วใช้ปุ่ม «ปิดกะ» ข้างสถานะกะเช้า/ดึกเมื่อยังกำลังผลิต (IN_PROGRESS)'
+              : 'If you can close sessions: expand a line, then use «Close shift» next to Day/Night status when still In Progress.'}
+          </p>
+        ) : null}
+        {!canEditRecord ? (
           <p className="text-xs text-amber-700/90 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 mt-2 inline-block">
             {locale === 'th'
               ? 'แก้ไขย้อนหลัง: ให้หัวหน้างานขึ้นไปเปิดหน้านี้ ขยายสาย แล้วคลิกช่องรายชั่วโมง — หรือแจ้ง Admin'
               : 'To correct data, ask Supervisor+ to open this page, expand the line, then click an hourly cell, or contact Admin.'}
           </p>
-        )}
+        ) : null}
       </div>
 
       {/* Filter bar */}
@@ -978,8 +1030,21 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                                     {locale === 'th' ? 'กะเช้า' : 'Day Shift'}
                                   </span>
                                   {day && (
-                                    <div className="flex items-center gap-2 text-xs">
+                                    <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
                                       {statusBadge(day.status)}
+                                      {day.status === 'IN_PROGRESS' && canCloseSession && day.id ? (
+                                        <button
+                                          type="button"
+                                          disabled={closingSessionId === day.id}
+                                          onClick={() => closeProductionSession(String(day.id))}
+                                          className="inline-flex items-center gap-1 rounded-md border border-blue-600 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                        >
+                                          {closingSessionId === day.id ? (
+                                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                                          ) : null}
+                                          {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
+                                        </button>
+                                      ) : null}
                                       {day.operator && (
                                         <span className="text-slate-500">
                                           {`${day.operator.firstName ?? ''} ${day.operator.lastName ?? ''}`.trim()}
@@ -1002,8 +1067,21 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole }:
                                     {locale === 'th' ? 'กะดึก' : 'Night Shift'}
                                   </span>
                                   {night && (
-                                    <div className="flex items-center gap-2 text-xs">
+                                    <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
                                       {statusBadge(night.status)}
+                                      {night.status === 'IN_PROGRESS' && canCloseSession && night.id ? (
+                                        <button
+                                          type="button"
+                                          disabled={closingSessionId === night.id}
+                                          onClick={() => closeProductionSession(String(night.id))}
+                                          className="inline-flex items-center gap-1 rounded-md border border-blue-600 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                        >
+                                          {closingSessionId === night.id ? (
+                                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                                          ) : null}
+                                          {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
+                                        </button>
+                                      ) : null}
                                       {night.operator && (
                                         <span className="text-slate-500">
                                           {`${night.operator.firstName ?? ''} ${night.operator.lastName ?? ''}`.trim()}

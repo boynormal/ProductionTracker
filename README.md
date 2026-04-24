@@ -15,6 +15,7 @@
 7. [โครงสร้างโฟลเดอร์หลัก](#7-โครงสร้างโฟลเดอร์หลัก)
 8. [โมเดลฐานข้อมูล (สรุป)](#8-โมเดลฐานข้อมูล-สรุป)
 9. [กฎธุรกิจสำคัญ](#9-กฎธุรกิจสำคัญ)
+   - [9.5 การปิดกะเมื่อจบจริง (SOP) / auto-close / ตรวจสอบข้อมูล](#95-การปิดกะเมื่อจบจริง-sop--auto-close--ตรวจสอบข้อมูล)
 10. [การยืนยันตัวตนและสิทธิ์](#10-การยืนยันตัวตนและสิทธิ์)
 11. [เส้นทางหน้าเว็บ (UI)](#11-เส้นทางหน้าเว็บ-ui)
 12. [API (สรุปตามกลุ่ม)](#12-api-สรุปตามกลุ่ม)
@@ -216,6 +217,35 @@ Enum สำคัญ: `UserRole`, `ShiftType` (DAY/NIGHT), `SessionStatus`, `Pro
 
 - API: `GET /api/production/dashboard` — query: `mode` (`day`|`month`), `date` (YYYY-MM-DD), `month` (YYYY-MM), `sectionId` (optional) เพื่อกรองเฉพาะสายที่อยู่ใน Section นั้น
 - ตัวเลขเครื่อง active / session สอดคล้องกับตัวกรอง; การแจ้งเตือนที่ยังไม่อ่านอาจเป็นทั้งระบบ (ไม่กรองตาม section — ตามพฤติกรรมปัจจุบันของ API)
+
+### 9.5 การปิดกะเมื่อจบจริง (SOP) / auto-close / ตรวจสอบข้อมูล
+
+**หลักการ:** การบันทึกรายชั่วโมง **ไม่แทน** การปิดกะ — เมื่อกะจบการผลิตจริง ต้องให้ session เป็น `COMPLETED` ไม่ปล่อยให้ `IN_PROGRESS` ค้างไปซ้อนกับกะถัดไปบนสายและ `sessionDate` เดียวกัน (DAY + NIGHT เปิดพร้อมกันได้ตาม schema แต่จะทำให้หน้าบันทึก/ประวัติสับสนและเสี่ยงผูกข้อมูลผิดกะ)
+
+**ใครปิด:** ผู้ใช้ที่มีสิทธิ์ `api.production.session.write` (กำหนดบทบาทในทีม เช่น หัวหน้าไลน์ / PC / วิศวกร — ตามที่องค์กรตกลง)
+
+**เมื่อไหร่:** ทันทีที่กะจบจริง ไม่เลื่อนไปวันถัดไป — **ก่อน** ที่กะถัดไปจะต้องบันทึกหรือเปิด session ใหม่
+
+**ทำอย่างไร:**
+
+- ผ่าน UI: หน้า **`/production/history`** — ขยายรายละเอียดสาย แล้วใช้ปุ่ม **ปิดกะ** ที่แถวกะเช้า/ดึกเมื่อสถานะยัง `IN_PROGRESS` (ถ้ามีสิทธิ์)
+- ผ่าน API: `PATCH /api/production/sessions/[id]` ด้วย body `{ "status": "COMPLETED" }` (optional `endTime` เป็น ISO string)
+
+**ตรวจสอบรายสัปดาห์ (PostgreSQL):** หาไลน์ที่มีมากกว่า 1 session ยัง `IN_PROGRESS` ในวันเดียวกัน (`sessionDate`)
+
+```sql
+SELECT "lineId", "sessionDate"::date AS session_day,
+       COUNT(*) FILTER (WHERE status = 'IN_PROGRESS') AS open_cnt
+FROM production_sessions
+GROUP BY "lineId", "sessionDate"
+HAVING COUNT(*) FILTER (WHERE status = 'IN_PROGRESS') > 1;
+```
+
+**แก้ข้อมูลค้าง (ครั้งเดียว / ops):** หลังยืนยันว่าเป็นกะที่จบแล้วจริง ให้ปิดด้วย `PATCH` ข้างต้นหรือปุ่มในประวัติ — อย่าแก้ `hourly_records` แทนการปิด session โดยไม่มีเหตุผล
+
+**Auto-close (safety net):** `POST /api/production/sessions/auto-close` (cron + `CRON_SECRET` หรือสิทธิ์ `api.production.sessions.auto-close`) จะบังคับ `COMPLETED` ในช่วงเวลาไทยที่กำหนดใน [`lib/production/session-auto-close.ts`](lib/production/session-auto-close.ts) — เป็น **สำรอง** กรณีพลาดปิดกะด้วยมือ ไม่ใช่ขั้นตอนหลัก
+
+**Cron:** แนะนำให้ scheduler เรียก auto-close **อย่างน้อยทุก 5–15 นาที** ในช่วงหลังกะ (เช่น หลัง 20:15 น. และช่วงเช้า) เพื่อให้ทับช่วง hard-close ที่ระบบเปิดไว้
 
 ---
 

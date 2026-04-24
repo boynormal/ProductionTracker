@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { prisma } from '@/lib/prisma'
 import { getThaiTodayUTC, formatThaiDateUTCISO, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
@@ -10,6 +11,12 @@ export default async function HistoryPage() {
 
   const today = getThaiTodayUTC()
   const defaultDate = formatThaiDateUTCISO(today)
+
+  const canCloseSession = session?.user?.id
+    ? await checkPermissionForSession(session, 'api.production.session.write', {
+        apiPath: '/api/production/sessions',
+      })
+    : false
 
   const [sessions, lines] = await Promise.all([
     prisma.productionSession.findMany({
@@ -60,6 +67,7 @@ export default async function HistoryPage() {
       lines={JSON.parse(JSON.stringify(lines))}
       defaultDate={defaultDate}
       userRole={session?.user?.role}
+      canCloseSession={canCloseSession}
     />
   )
 }
