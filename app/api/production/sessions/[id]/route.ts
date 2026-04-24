@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
@@ -49,17 +50,46 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const existing = await prisma.productionSession.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const updateData: any = {}
   const d = parsed.data
+  const isReopenShift =
+    d.status === 'IN_PROGRESS' && existing.status === 'COMPLETED'
 
-  if (d.status)  updateData.status  = d.status
+  if (d.status === 'IN_PROGRESS' && existing.status === 'CANCELLED') {
+    return NextResponse.json(
+      { error: 'ไม่สามารถเปิดกะจากสถานะยกเลิกได้' },
+      { status: 400 },
+    )
+  }
+
+  if (isReopenShift) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: session.user.id! },
+      select: { role: true, isActive: true },
+    })
+    if (!dbUser?.isActive || dbUser.role !== 'ADMIN') {
+      return NextResponse.json(
+        {
+          error:
+            'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ยกเลิกปิดกะได้ — Only ADMIN may reopen a completed shift.',
+        },
+        { status: 403 },
+      )
+    }
+  }
+
+  const updateData: Record<string, unknown> = {}
+
+  if (d.status) updateData.status = d.status
   if (d.remark !== undefined) updateData.remark = d.remark
   if (d.otHours !== undefined) {
-    updateData.otHours    = d.otHours
+    updateData.otHours = d.otHours
     updateData.totalHours = existing.normalHours + d.otHours
   }
   if (d.status === 'COMPLETED') {
     updateData.endTime = d.endTime ? new Date(d.endTime as string) : new Date()
+  }
+  if (isReopenShift) {
+    updateData.endTime = null
   }
 
   const updated = await prisma.productionSession.update({
@@ -68,13 +98,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   })
 
   const auditUid = await auditUserIdFromSession(session)
+  const auditAction =
+    d.status === 'COMPLETED'
+      ? 'COMPLETE_SESSION'
+      : d.status === 'CANCELLED'
+        ? 'CANCEL_SESSION'
+        : isReopenShift
+          ? 'REOPEN_SESSION'
+          : 'UPDATE_SESSION'
+  const auditDetails = isReopenShift
+    ? {
+        ...updateData,
+        previousStatus: existing.status,
+        lineId: existing.lineId,
+        sessionDate: existing.sessionDate.toISOString(),
+        shiftType: existing.shiftType,
+      }
+    : updateData
+
   await prisma.auditLog.create({
     data: {
       userId: auditUid,
-      action: d.status === 'COMPLETED' ? 'COMPLETE_SESSION' : d.status === 'CANCELLED' ? 'CANCEL_SESSION' : 'UPDATE_SESSION',
+      action: auditAction,
       entity: 'production_sessions',
       entityId: id,
-      details: updateData,
+      details: auditDetails as Prisma.InputJsonValue,
     },
   })
 

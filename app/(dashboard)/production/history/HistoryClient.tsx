@@ -14,6 +14,7 @@ import {
   Layers,
   LayoutList,
   Percent,
+  RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
@@ -435,6 +436,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   /** รายละเอียดรายชั่วโมง (พนักงาน / สรุป Part / กริด) — ยุบเป็นค่าเริ่มต้น */
   const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(() => new Set())
   const [closingSessionId, setClosingSessionId] = useState<string | null>(null)
+  const [reopeningSessionId, setReopeningSessionId] = useState<string | null>(null)
   /** กรองตาม % คอลัมน์ «รวมทั้งวัน» (ต้องมีเป้ารวม > 0) */
   const [filterDayPctBand, setFilterDayPctBand] = useState<'all' | 'lt85' | '85-99' | 'ge100'>('all')
   const [filterOnlyWithBreakdown, setFilterOnlyWithBreakdown] = useState(false)
@@ -450,6 +452,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   }, [])
 
   const canEditRecord = !!(userRole && EDIT_ROLES.has(userRole))
+  /** ยกเลิกปิดกะ: API ต้องการทั้ง role ADMIN (จาก DB ตอน PATCH) และสิทธิ์ session.write */
+  const canAdminReopenShift = userRole === 'ADMIN' && canCloseSession
 
   const divisionOptions = useMemo(() => {
     const m = new Map<string, string>()
@@ -560,6 +564,47 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     [locale, reloadSessions],
   )
 
+  const reopenProductionSession = useCallback(
+    async (sessionId: string) => {
+      const msg =
+        locale === 'th'
+          ? 'ยืนยันยกเลิกปิดกะ — สถานะจะกลับเป็นกำลังผลิต (IN_PROGRESS) และล้างเวลาสิ้นสุดกะ หรือไม่?'
+          : 'Reopen this shift? Status becomes IN_PROGRESS and end time is cleared.'
+      if (!window.confirm(msg)) return
+      setReopeningSessionId(sessionId)
+      try {
+        const r = await fetch(`/api/production/sessions/${sessionId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'IN_PROGRESS' }),
+        })
+        let j: Record<string, unknown> = {}
+        try {
+          j = (await r.json()) as Record<string, unknown>
+        } catch {
+          /* ignore */
+        }
+        if (!r.ok) {
+          const err =
+            typeof j.error === 'string'
+              ? j.error
+              : locale === 'th'
+                ? 'ยกเลิกปิดกะไม่สำเร็จ'
+                : 'Failed to reopen shift'
+          toast.error(err)
+          return
+        }
+        toast.success(locale === 'th' ? 'ยกเลิกปิดกะแล้ว — กะกลับเป็นกำลังผลิต' : 'Shift reopened (in progress).')
+        await reloadSessions()
+      } catch {
+        toast.error(locale === 'th' ? 'ยกเลิกปิดกะไม่สำเร็จ' : 'Failed to reopen shift')
+      } finally {
+        setReopeningSessionId(null)
+      }
+    },
+    [locale, reloadSessions],
+  )
+
   /** ปุ่มปิดกะในแถวหลักของตาราง (คอลัมน์กะเช้า/ดึก) — มองเห็นได้โดยไม่ต้องขยายรายละเอียด */
   const renderShiftCloseControl = useCallback(
     (sess: any | null) => {
@@ -588,6 +633,29 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
       )
     },
     [canCloseSession, closeProductionSession, closingSessionId, locale],
+  )
+
+  /** Admin: ย้อน COMPLETED → IN_PROGRESS — ต้องตรงกับ API (role ADMIN + session.write) */
+  const renderShiftReopenControl = useCallback(
+    (sess: any | null) => {
+      if (!sess || sess.status !== 'COMPLETED' || !canAdminReopenShift) return null
+      const sid = sess.id ? String(sess.id) : ''
+      if (!sid) return null
+      return (
+        <div className="mt-1.5 flex flex-col items-start gap-1 border-t border-amber-100 pt-1.5">
+          <button
+            type="button"
+            disabled={reopeningSessionId === sid}
+            onClick={() => reopenProductionSession(sid)}
+            className="inline-flex items-center gap-1 rounded-md border border-amber-700 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-900 shadow-sm hover:bg-amber-100 disabled:opacity-50"
+          >
+            {reopeningSessionId === sid ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden /> : <RotateCcw className="h-3 w-3 shrink-0" aria-hidden />}
+            {locale === 'th' ? 'ยกเลิกปิดกะ' : 'Reopen shift'}
+          </button>
+        </div>
+      )
+    },
+    [canAdminReopenShift, locale, reopenProductionSession, reopeningSessionId],
   )
 
   useEffect(() => {
@@ -702,6 +770,13 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
               : 'Closing a shift requires api.production.session.write; contact Admin if you do not see the button.'}
           </p>
         )}
+        {canAdminReopenShift ? (
+          <p className="text-xs text-amber-800/90 mt-1 rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1">
+            {locale === 'th'
+              ? 'Admin: หากปิดกะผิด ใช้ปุ่มสีเหลือง «ยกเลิกปิดกะ» ใต้คอลัมน์กะที่สถานะเสร็จสิ้น — บันทึก audit เป็น REOPEN_SESSION'
+              : 'Admin: if a shift was closed by mistake, use the amber «Reopen shift» under a completed shift column — audited as REOPEN_SESSION.'}
+          </p>
+        ) : null}
         {!canEditRecord ? (
           <p className="text-xs text-amber-700/90 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 mt-2 inline-block">
             {locale === 'th'
@@ -1052,6 +1127,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                               </span>
                             </div>
                             {renderShiftCloseControl(day)}
+                            {renderShiftReopenControl(day)}
                           </div>
                         ) : (
                           <span className="text-slate-400 text-xs">—</span>
@@ -1078,6 +1154,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                               </span>
                             </div>
                             {renderShiftCloseControl(night)}
+                            {renderShiftReopenControl(night)}
                           </div>
                         ) : (
                           <span className="text-slate-400 text-xs">—</span>
@@ -1243,6 +1320,21 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                                           {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
                                         </button>
                                       ) : null}
+                                      {day.status === 'COMPLETED' && canAdminReopenShift && day.id ? (
+                                        <button
+                                          type="button"
+                                          disabled={reopeningSessionId === day.id}
+                                          onClick={() => reopenProductionSession(String(day.id))}
+                                          className="inline-flex items-center gap-1 rounded-md border border-amber-700 px-2 py-0.5 font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                                        >
+                                          {reopeningSessionId === day.id ? (
+                                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                                          ) : (
+                                            <RotateCcw className="h-3 w-3 shrink-0" aria-hidden />
+                                          )}
+                                          {locale === 'th' ? 'ยกเลิกปิดกะ' : 'Reopen shift'}
+                                        </button>
+                                      ) : null}
                                       {day.operator && (
                                         <span className="text-slate-500">
                                           {`${day.operator.firstName ?? ''} ${day.operator.lastName ?? ''}`.trim()}
@@ -1278,6 +1370,21 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                                             <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
                                           ) : null}
                                           {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
+                                        </button>
+                                      ) : null}
+                                      {night.status === 'COMPLETED' && canAdminReopenShift && night.id ? (
+                                        <button
+                                          type="button"
+                                          disabled={reopeningSessionId === night.id}
+                                          onClick={() => reopenProductionSession(String(night.id))}
+                                          className="inline-flex items-center gap-1 rounded-md border border-amber-700 px-2 py-0.5 font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                                        >
+                                          {reopeningSessionId === night.id ? (
+                                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                                          ) : (
+                                            <RotateCcw className="h-3 w-3 shrink-0" aria-hidden />
+                                          )}
+                                          {locale === 'th' ? 'ยกเลิกปิดกะ' : 'Reopen shift'}
                                         </button>
                                       ) : null}
                                       {night.operator && (
