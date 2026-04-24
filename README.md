@@ -228,7 +228,7 @@ Enum สำคัญ: `UserRole`, `ShiftType` (DAY/NIGHT), `SessionStatus`, `Pro
 
 **ทำอย่างไร:**
 
-- ผ่าน UI: หน้า **`/production/history`** — ขยายรายละเอียดสาย แล้วใช้ปุ่ม **ปิดกะ** ที่แถวกะเช้า/ดึกเมื่อสถานะยัง `IN_PROGRESS` (ถ้ามีสิทธิ์)
+- ผ่าน UI: หน้า **`/production/history`** — ปุ่ม **ปิดกะ** สีน้ำเงินอยู่ใต้ตัวเลขในคอลัมน์ **กะเช้า** / **กะดึก** ของแถวสาย (เมื่อ session นั้นยัง `IN_PROGRESS` และมีสิทธิ์); ยังมีปุ่มซ้ำได้เมื่อขยายรายละเอียดสาย
 - ผ่าน API: `PATCH /api/production/sessions/[id]` ด้วย body `{ "status": "COMPLETED" }` (optional `endTime` เป็น ISO string)
 
 **ตรวจสอบรายสัปดาห์ (PostgreSQL):** หาไลน์ที่มีมากกว่า 1 session ยัง `IN_PROGRESS` ในวันเดียวกัน (`sessionDate`)

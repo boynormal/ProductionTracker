@@ -536,6 +536,36 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     [locale, reloadSessions],
   )
 
+  /** ปุ่มปิดกะในแถวหลักของตาราง (คอลัมน์กะเช้า/ดึก) — มองเห็นได้โดยไม่ต้องขยายรายละเอียด */
+  const renderShiftCloseControl = useCallback(
+    (sess: any | null) => {
+      if (!sess || sess.status !== 'IN_PROGRESS') return null
+      const sid = sess.id ? String(sess.id) : ''
+      return (
+        <div className="mt-1.5 flex flex-col items-start gap-1 border-t border-slate-100 pt-1.5">
+          {canCloseSession && sid ? (
+            <button
+              type="button"
+              disabled={closingSessionId === sid}
+              onClick={() => closeProductionSession(sid)}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {closingSessionId === sid ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden /> : null}
+              {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
+            </button>
+          ) : (
+            <span className="text-[10px] font-medium leading-snug text-blue-800">
+              {locale === 'th'
+                ? 'สถานะกำลังผลิต — ให้ผู้มีสิทธิ์ปิดกะในคอลัมน์นี้'
+                : 'Shift open — ask a user with close permission to use the button in this column.'}
+            </span>
+          )}
+        </div>
+      )
+    },
+    [canCloseSession, closeProductionSession, closingSessionId, locale],
+  )
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -599,10 +629,16 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         {canCloseSession ? (
           <p className="text-xs text-slate-400 mt-1">
             {locale === 'th'
-              ? 'ผู้มีสิทธิ์ปิด session: ขยายรายละเอียดสาย แล้วใช้ปุ่ม «ปิดกะ» ข้างสถานะกะเช้า/ดึกเมื่อยังกำลังผลิต (IN_PROGRESS)'
-              : 'If you can close sessions: expand a line, then use «Close shift» next to Day/Night status when still In Progress.'}
+              ? 'ปิดกะ: ดูที่คอลัมน์ «กะเช้า» หรือ «กะดึก» ในแถวสาย — ปุ่มสีน้ำเงิน «ปิดกะ» จะขึ้นเมื่อ session นั้นยังกำลังผลิต (ไม่ต้องขยายลูกศร)'
+              : 'Close shift: use the blue «Close shift» button in the Day or Night column on each line row when that shift is still in progress (no need to expand).'}
           </p>
-        ) : null}
+        ) : (
+          <p className="text-xs text-slate-400 mt-1">
+            {locale === 'th'
+              ? 'ปิดกะ: ต้องมีสิทธิ์ api.production.session.write — หากไม่เห็นปุ่ม ให้ติดต่อ Admin'
+              : 'Closing a shift requires api.production.session.write; contact Admin if you do not see the button.'}
+          </p>
+        )}
         {!canEditRecord ? (
           <p className="text-xs text-amber-700/90 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 mt-2 inline-block">
             {locale === 'th'
@@ -852,17 +888,22 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                         </div>
                       </td>
                       {/* Column: กะเช้า */}
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="border border-slate-200 px-3 py-2 align-top">
                         {day ? (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="font-mono">{dTot.ok.toLocaleString()}</span>
-                            <span className="text-slate-400">/</span>
-                            <span className="text-slate-400">{dTot.tgt.toLocaleString()}</span>
-                            <span className={cn('font-medium', dTot.avgPctNormal >= 100 ? 'text-green-600' : 'text-slate-500')}>
-                              ({dTot.avgPctNormal}%)
-                            </span>
+                          <div className="flex flex-col text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono">{dTot.ok.toLocaleString()}</span>
+                              <span className="text-slate-400">/</span>
+                              <span className="text-slate-400">{dTot.tgt.toLocaleString()}</span>
+                              <span className={cn('font-medium', dTot.avgPctNormal >= 100 ? 'text-green-600' : 'text-slate-500')}>
+                                ({dTot.avgPctNormal}%)
+                              </span>
+                            </div>
+                            {renderShiftCloseControl(day)}
                           </div>
-                        ) : <span className="text-slate-400 text-xs">—</span>}
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
                       </td>
                       {/* Column: OT เช้า */}
                       <td className="border border-slate-200 px-3 py-2 text-center">
@@ -873,17 +914,22 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                         ) : <span className="text-slate-400 text-xs">—</span>}
                       </td>
                       {/* Column: กะดึก */}
-                      <td className="border border-slate-200 px-3 py-2">
+                      <td className="border border-slate-200 px-3 py-2 align-top">
                         {night ? (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="font-mono">{nTot.ok.toLocaleString()}</span>
-                            <span className="text-slate-400">/</span>
-                            <span className="text-slate-400">{nTot.tgt.toLocaleString()}</span>
-                            <span className={cn('font-medium', nTot.avgPctNormal >= 100 ? 'text-green-600' : 'text-slate-500')}>
-                              ({nTot.avgPctNormal}%)
-                            </span>
+                          <div className="flex flex-col text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono">{nTot.ok.toLocaleString()}</span>
+                              <span className="text-slate-400">/</span>
+                              <span className="text-slate-400">{nTot.tgt.toLocaleString()}</span>
+                              <span className={cn('font-medium', nTot.avgPctNormal >= 100 ? 'text-green-600' : 'text-slate-500')}>
+                                ({nTot.avgPctNormal}%)
+                              </span>
+                            </div>
+                            {renderShiftCloseControl(night)}
                           </div>
-                        ) : <span className="text-slate-400 text-xs">—</span>}
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
                       </td>
                       {/* Column: OT ดึก */}
                       <td className="border border-slate-200 px-3 py-2 text-center">
