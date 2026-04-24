@@ -3,7 +3,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { formatUtcCalendarDate, SHIFT_CONFIGS } from '@/lib/time-utils'
-import { Search, Wrench, XCircle, Loader2, CalendarDays, Factory, ChevronDown, Layers, LayoutList } from 'lucide-react'
+import {
+  Search,
+  Wrench,
+  XCircle,
+  Loader2,
+  CalendarDays,
+  Factory,
+  ChevronDown,
+  Layers,
+  LayoutList,
+  Percent,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import { HistoryHourlyEditDialog } from './HistoryHourlyEditDialog'
@@ -259,6 +270,15 @@ function sessionTotals(sess: any | null) {
   }
 }
 
+/** % รวมทั้งวันในคอลัมน์ «รวมทั้งวัน» — เฉลี่ยกะที่มีข้อมูล หรือกะเดียว */
+function avgPctDayTotalColumn(dTot: ReturnType<typeof sessionTotals>, nTot: ReturnType<typeof sessionTotals>) {
+  return dTot.avgPctNormal > 0 && nTot.avgPctNormal > 0
+    ? Math.round((dTot.avgPctNormal + nTot.avgPctNormal) / 2)
+    : dTot.avgPctNormal > 0
+      ? dTot.avgPctNormal
+      : nTot.avgPctNormal
+}
+
 function ShiftHourGrid({
   sess,
   canEdit,
@@ -415,6 +435,10 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   /** รายละเอียดรายชั่วโมง (พนักงาน / สรุป Part / กริด) — ยุบเป็นค่าเริ่มต้น */
   const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(() => new Set())
   const [closingSessionId, setClosingSessionId] = useState<string | null>(null)
+  /** กรองตาม % คอลัมน์ «รวมทั้งวัน» (ต้องมีเป้ารวม > 0) */
+  const [filterDayPctBand, setFilterDayPctBand] = useState<'all' | 'lt85' | '85-99' | 'ge100'>('all')
+  const [filterOnlyWithBreakdown, setFilterOnlyWithBreakdown] = useState(false)
+  const [filterOnlyWithNg, setFilterOnlyWithNg] = useState(false)
 
   const toggleLineDetail = useCallback((id: string) => {
     setExpandedLineIds((prev) => {
@@ -594,7 +618,33 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     return filteredLines.some(l => l.id === lid)
   })
 
-  const groupedLines = groupSessionsByLine(filteredSessions, filteredLines)
+  const groupedLines = useMemo(() => {
+    const base = groupSessionsByLine(filteredSessions, filteredLines)
+    return base.filter(({ day, night }) => {
+      const dTot = sessionTotals(day)
+      const nTot = sessionTotals(night)
+      const sumTgt = dTot.tgt + nTot.tgt
+      const pctDay = avgPctDayTotalColumn(dTot, nTot)
+      const bdNg = aggregateBreakdownNgForLineDay(day, night)
+
+      if (filterOnlyWithBreakdown && bdNg.bdCount <= 0 && bdNg.bdMinutes <= 0) return false
+      if (filterOnlyWithNg && bdNg.ngQty <= 0) return false
+
+      if (filterDayPctBand !== 'all') {
+        if (sumTgt <= 0) return false
+        if (filterDayPctBand === 'lt85' && pctDay >= 85) return false
+        if (filterDayPctBand === '85-99' && (pctDay < 85 || pctDay >= 100)) return false
+        if (filterDayPctBand === 'ge100' && pctDay < 100) return false
+      }
+      return true
+    })
+  }, [
+    filteredSessions,
+    filteredLines,
+    filterDayPctBand,
+    filterOnlyWithBreakdown,
+    filterOnlyWithNg,
+  ])
 
   /** รายการกะที่ยังเปิด — ใช้แสดงแถบช่วยหาปุ่มปิดกะ */
   const openShiftBannerLines = useMemo(
@@ -752,6 +802,58 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
             />
           </div>
         </div>
+        <div className="w-full border-t border-slate-100 pt-3 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-3 sm:ml-0 flex flex-col gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            {locale === 'th' ? 'กรองผลลัพธ์ในตาราง' : 'Table filters'}
+          </span>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[200px]">
+              <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                <Percent size={14} className="text-slate-400" />
+                {locale === 'th' ? '% รวมทั้งวัน' : 'Day total %'}
+              </label>
+              <select
+                value={filterDayPctBand}
+                onChange={e => setFilterDayPctBand(e.target.value as typeof filterDayPctBand)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+              >
+                <option value="all">{locale === 'th' ? 'ทั้งหมด' : 'All'}</option>
+                <option value="lt85">{locale === 'th' ? 'ต่ำกว่า 85%' : 'Under 85%'}</option>
+                <option value="85-99">{locale === 'th' ? '85% – 99%' : '85% – 99%'}</option>
+                <option value="ge100">{locale === 'th' ? '100% ขึ้นไป' : '≥ 100%'}</option>
+              </select>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                checked={filterOnlyWithBreakdown}
+                onChange={e => setFilterOnlyWithBreakdown(e.target.checked)}
+              />
+              <span className="flex items-center gap-1.5">
+                <Wrench size={14} className="text-red-400 shrink-0" aria-hidden />
+                {locale === 'th' ? 'มี Breakdown' : 'Has breakdown'}
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                checked={filterOnlyWithNg}
+                onChange={e => setFilterOnlyWithNg(e.target.checked)}
+              />
+              <span className="flex items-center gap-1.5">
+                <XCircle size={14} className="text-orange-400 shrink-0" aria-hidden />
+                {locale === 'th' ? 'มี NG' : 'Has NG'}
+              </span>
+            </label>
+          </div>
+          <p className="text-[10px] leading-snug text-slate-400">
+            {locale === 'th'
+              ? '% รวมทั้งวัน: ใช้เกณฑ์เดียวกับคอลัมน์รวม (ไม่รวมสายที่เป้ารวม = 0) · Breakdown/NG: ตามนาที/ครั้งและจำนวนชิ้นในวันนั้น'
+              : 'Day total % matches the Total column (lines with zero combined target are excluded from % bands). Breakdown/NG use minutes/events and pieces for that day.'}
+          </p>
+        </div>
         {loading && (
           <div className="flex items-center gap-2 text-xs text-slate-500 sm:pb-2">
             <Loader2 size={16} className="animate-spin" />
@@ -828,9 +930,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 const nTot    = sessionTotals(night)
                 const sumOk   = dTot.ok + nTot.ok
                 const sumTgt  = dTot.tgt + nTot.tgt
-                const avgPctAllNormal = dTot.avgPctNormal > 0 && nTot.avgPctNormal > 0
-                  ? Math.round((dTot.avgPctNormal + nTot.avgPctNormal) / 2)
-                  : dTot.avgPctNormal > 0 ? dTot.avgPctNormal : nTot.avgPctNormal
+                const avgPctAllNormal = avgPctDayTotalColumn(dTot, nTot)
                 const rawDate  = day?.reportingDate ?? night?.reportingDate
 
                 const dayParts   = getUniqueParts(day)
