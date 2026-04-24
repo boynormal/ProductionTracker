@@ -37,6 +37,17 @@ const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
 })
 
 type FormData = z.infer<ReturnType<typeof createSchema>>
+type SessionGuardWarning = {
+  code: string
+  message: string
+  mode: 'warn' | 'enforce'
+  lineId: string
+  lineCode: string
+  lineName: string
+  activeLineTargetCount: number
+  overrideApplied: boolean
+  overrideReason?: string | null
+}
 
 
 const LINE_LIST_MAX_HEIGHT = 'min(calc(2.75rem * 20), min(55vh, 70dvh))' as const
@@ -212,6 +223,7 @@ export function RecordClient({
   const [submitted, setSubmitted]     = useState(false)
   const [sessionData, setSessionData] = useState<any>(initialSession)
   const [creatingSession, setCreatingSession] = useState(false)
+  const [sessionGuardWarning, setSessionGuardWarning] = useState<SessionGuardWarning | null>(null)
   /** สายที่เลือก (หรือ locked จาก QR) */
   const [selectedLineId, setSelectedLineId] = useState<string>(() => lockedLine?.id ?? initialLineId ?? '')
 
@@ -573,30 +585,62 @@ export function RecordClient({
 
     setCreatingSession(true)
     try {
-      const res = await fetch('/api/production/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lineId,
-          normalHours: 8,
-          otHours: 0,
-        }),
-      })
-      const text = await res.text()
-      let json: any
-      try { json = JSON.parse(text) } catch { throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`) }
+      const createSession = async (payload: Record<string, unknown>) => {
+        const res = await fetch('/api/production/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const text = await res.text()
+        let json: any
+        try { json = JSON.parse(text) } catch { throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`) }
+        return { res, json }
+      }
+      const basePayload = {
+        lineId,
+        normalHours: 8,
+        otHours: 0,
+      }
+      let { res, json } = await createSession(basePayload)
       if (res.status === 409 && json.data) {
 
         const det = await fetch(`/api/production/sessions/${json.data.id}`)
         const detJson = await det.json()
         const fullSession = detJson.data ?? json.data
         setSessionData(fullSession)
+        setSessionGuardWarning((json.warning as SessionGuardWarning | undefined) ?? null)
         return fullSession
+      }
+      if (
+        res.status === 409 &&
+        json?.code === 'LINE_TARGET_MISSING' &&
+        json?.guard?.canOverrideMissingTarget
+      ) {
+        const reasonPrompt = locale === 'th'
+          ? `สาย ${json?.guard?.lineCode ?? ''} ยังไม่มี LinePartTarget\nกรอกเหตุผลเพื่อเปิด Session ชั่วคราว:`
+          : `Line ${json?.guard?.lineCode ?? ''} has no LinePartTarget.\nEnter reason for temporary override:`
+        const reason = window.prompt(reasonPrompt, '')
+        const overrideReason = String(reason ?? '').trim()
+        if (!overrideReason) {
+          toast.error(locale === 'th' ? 'ยกเลิก: ไม่ได้ระบุเหตุผลสำหรับ override' : 'Cancelled: override reason is required.')
+          return null
+        }
+        const overrideReq = await createSession({
+          ...basePayload,
+          allowNoTargetOverride: true,
+          overrideReason,
+        })
+        res = overrideReq.res
+        json = overrideReq.json
       }
       if (!res.ok) throw new Error(json.error ?? 'Failed to create session')
 
       const newSession = { ...json.data, hourlyRecords: [] }
       setSessionData(newSession)
+      setSessionGuardWarning((json.warning as SessionGuardWarning | undefined) ?? null)
+      if (json.warning?.code === 'LINE_TARGET_MISSING') {
+        toast.warning(json.warning.message ?? t('recordNoLinePartTargets'))
+      }
       toast.success(t('recordSessionAutoCreated'))
       return newSession
     } catch (e: any) {
@@ -875,6 +919,19 @@ export function RecordClient({
         </div>
         {localeToggleMobile}
       </div>
+      {sessionGuardWarning ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+          <p className="font-semibold">
+            {locale === 'th' ? 'คำเตือนการตั้งค่า LinePartTarget' : 'LinePartTarget setup warning'}
+          </p>
+          <p className="mt-1 leading-relaxed">{sessionGuardWarning.message}</p>
+          <p className="mt-1 text-xs text-amber-800/90">
+            {locale === 'th'
+              ? `สาย ${sessionGuardWarning.lineCode} (${sessionGuardWarning.lineName}) / โหมด ${sessionGuardWarning.mode}`
+              : `Line ${sessionGuardWarning.lineCode} (${sessionGuardWarning.lineName}) / mode ${sessionGuardWarning.mode}`}
+          </p>
+        </div>
+      ) : null}
 
       {lockedLine ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/90 px-4 py-3.5 text-base text-indigo-950 shadow-sm">

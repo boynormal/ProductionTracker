@@ -126,6 +126,9 @@ npm run verify
 | `NEXT_PUBLIC_BASE_URL` | URL สำหรับสร้างลิงก์ QR (มักตั้งเป็น IP ภายใน LAN) |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | ใช้ส่งแจ้งเตือน Telegram |
 | `NOTIFICATION_CHECK_INTERVAL_MINUTES` | ช่วงเวลาตรวจแจ้งเตือน (ค่าเริ่มต้นตามที่ใช้ในโค้ด เช่น 15 นาที) |
+| `LINE_TARGET_GUARD_MODE` | โหมด guard ตอนเปิด session: `warn` (ค่าเริ่มต้น) หรือ `enforce` |
+| `LINE_TARGET_GUARD_ALLOW_OVERRIDE` | อนุญาต override ตอนขาด line target (`true`/`false`) |
+| `LINE_TARGET_GUARD_OVERRIDE_ROLES` | รายชื่อ role ที่ override ได้ คั่นด้วย `,` (เช่น `SUPERVISOR,ENGINEER`) |
 
 รายละเอียดพฤติกรรมแต่ละจุดอยู่ในโค้ดของ route ที่เกี่ยวข้อง (`app/api/...`)
 
@@ -281,6 +284,37 @@ Flow โดยย่อ:
 
 - Cron หรือ scheduler ภายนอกเรียก **`/api/notifications/check`** (ตรวจวันหยุด, กะ, session ที่กำลังทำงาน, ชั่วโมงที่คาดว่าต้องมีข้อมูล)
 - หากพบชั่วโมงที่ “ขาด” อาจสร้าง `Notification` และส่งข้อความไป **Telegram** (ฟังก์ชันส่งอยู่ใน `lib/telegram.ts` — ควรมี try/catch ไม่ให้ล้ม flow หลัก)
+
+---
+
+## 14.1 LineTarget Guard Rollout (แนะนำ)
+
+ใช้เพื่อลดปัญหา “เปิด session/ออก QR ได้ทั้งที่ line ยังไม่มี LinePartTarget”
+
+### Soft Gate (ช่วงเริ่มต้น)
+
+- ตั้ง `LINE_TARGET_GUARD_MODE=warn`
+- ตั้ง `LINE_TARGET_GUARD_ALLOW_OVERRIDE=true`
+- ตั้ง `LINE_TARGET_GUARD_OVERRIDE_ROLES=SUPERVISOR,ENGINEER`
+- ระบบจะ:
+  - บันทึก audit event `SESSION_GUARD_WARN` เมื่อเปิด session ทั้งที่ไม่มี line target
+  - บันทึก `SESSION_GUARD_OVERRIDE` เมื่อใช้ override พร้อมเหตุผล
+  - แจ้งเตือนผู้ใช้ให้ไปตั้งค่าใน Master
+
+### Hard Enforcement (หลังข้อมูลนิ่ง)
+
+- เปลี่ยนเป็น `LINE_TARGET_GUARD_MODE=enforce`
+- แนะนำตั้ง `LINE_TARGET_GUARD_ALLOW_OVERRIDE=false` เพื่อ block เต็มรูปแบบ
+- ถ้ายังต้อง emergency override ให้เปิด `LINE_TARGET_GUARD_ALLOW_OVERRIDE=true` ชั่วคราวและจำกัด role
+
+### Daily Health Check (แนะนำรันทุกวันก่อนเริ่มกะ)
+
+ใช้ query จากไฟล์ `scripts/sql/line-target-health-check.sql`
+
+```bash
+# ตัวอย่างรันบน VPS ที่มี psql
+sudo -u postgres psql -d productiontracker -f scripts/sql/line-target-health-check.sql
+```
 
 ---
 

@@ -10,6 +10,8 @@ interface Line {
   id: string
   lineCode: string
   lineName: string
+  activeLineTargetCount: number
+  qrReady: boolean
   section: {
     id: string
     sectionCode: string
@@ -107,22 +109,28 @@ export function QrGeneratorClient({ lines }: Props) {
       return true
     })
   }, [lines, filterDivisionId, filterSectionId])
+  const unreadyFilteredLines = useMemo(
+    () => filteredLines.filter((line) => !line.qrReady),
+    [filteredLines],
+  )
 
   const selectedLinesOrdered = useMemo(
-    () => filteredLines.filter((l) => selectedLineIds.includes(l.id)),
+    () => filteredLines.filter((l) => l.qrReady && selectedLineIds.includes(l.id)),
     [filteredLines, selectedLineIds],
   )
 
   const previewLine = selectedLinesOrdered[0] ?? null
 
   const toggleLine = useCallback((id: string) => {
+    const line = filteredLines.find((l) => l.id === id)
+    if (!line?.qrReady) return
     setSelectedLineIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     )
-  }, [])
+  }, [filteredLines])
 
   const selectAllFiltered = useCallback(() => {
-    setSelectedLineIds(filteredLines.map((l) => l.id))
+    setSelectedLineIds(filteredLines.filter((l) => l.qrReady).map((l) => l.id))
   }, [filteredLines])
 
   const clearSelection = useCallback(() => setSelectedLineIds([]), [])
@@ -145,7 +153,8 @@ export function QrGeneratorClient({ lines }: Props) {
 
   useEffect(() => {
     const allow = new Set(filteredLines.map((l) => l.id))
-    setSelectedLineIds((prev) => prev.filter((id) => allow.has(id)))
+    const readyById = new Map(filteredLines.map((l) => [l.id, l.qrReady]))
+    setSelectedLineIds((prev) => prev.filter((id) => allow.has(id) && readyById.get(id) === true))
   }, [filteredLines])
 
   const handleDownloadSelectedQrs = useCallback(async () => {
@@ -265,6 +274,13 @@ export function QrGeneratorClient({ lines }: Props) {
               </div>
             </div>
             <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+              {unreadyFilteredLines.length > 0 ? (
+                <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+                  {locale === 'th'
+                    ? `มี ${unreadyFilteredLines.length} ไลน์ยังไม่มี LinePartTarget (Active) — ระบบไม่อนุญาตออก QR`
+                    : `${unreadyFilteredLines.length} line(s) have no active LinePartTarget — QR generation is blocked.`}
+                </div>
+              ) : null}
               {filteredLines.length === 0 ? (
                 <p className="px-2 py-3 text-center text-sm text-slate-400">
                   {locale === 'th' ? 'ไม่มีไลน์ตามตัวกรอง' : 'No lines match filters'}
@@ -276,11 +292,21 @@ export function QrGeneratorClient({ lines }: Props) {
                       <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
                         <input
                           type="checkbox"
-                          checked={selectedLineIds.includes(l.id)}
+                          checked={selectedLineIds.includes(l.id) && l.qrReady}
                           onChange={() => toggleLine(l.id)}
+                          disabled={!l.qrReady}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
                         />
                         <span className="font-medium text-slate-800">{l.lineCode}</span>
+                        {!l.qrReady ? (
+                          <span className="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                            {locale === 'th' ? 'ไม่มี target' : 'No target'}
+                          </span>
+                        ) : (
+                          <span className="ml-auto text-xs text-slate-400">
+                            {l.activeLineTargetCount}
+                          </span>
+                        )}
                       </label>
                     </li>
                   ))}

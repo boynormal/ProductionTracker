@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { getCurrentShift } from '@/lib/utils/shift'
@@ -7,6 +8,40 @@ import { checkPermission } from '@/lib/permissions/guard'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 
 const WITH_LEGACY_SESSION_DATE_FALLBACK = false
+const DEFAULT_OVERRIDE_ROLES: UserRole[] = ['SUPERVISOR', 'ENGINEER']
+
+type GuardMode = 'warn' | 'enforce'
+
+function getLineTargetGuardMode(): GuardMode {
+  const raw = (process.env.LINE_TARGET_GUARD_MODE ?? 'warn').trim().toLowerCase()
+  return raw === 'enforce' ? 'enforce' : 'warn'
+}
+
+function getLineTargetOverrideRoles(): Set<UserRole> {
+  const raw = (process.env.LINE_TARGET_GUARD_OVERRIDE_ROLES ?? '')
+    .split(',')
+    .map((x) => x.trim().toUpperCase())
+    .filter(Boolean)
+  if (raw.length === 0) return new Set(DEFAULT_OVERRIDE_ROLES)
+  const out = new Set<UserRole>()
+  for (const role of raw) {
+    if (role === 'OPERATOR' || role === 'SUPERVISOR' || role === 'ENGINEER' || role === 'MANAGER' || role === 'ADMIN') {
+      out.add(role)
+    }
+  }
+  return out.size > 0 ? out : new Set(DEFAULT_OVERRIDE_ROLES)
+}
+
+function isOverrideAllowedInMode(mode: GuardMode): boolean {
+  const raw = (process.env.LINE_TARGET_GUARD_ALLOW_OVERRIDE ?? '').trim().toLowerCase()
+  if (raw === 'true' || raw === '1') return true
+  if (raw === 'false' || raw === '0') return false
+  return mode === 'warn'
+}
+
+function parseBool(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1'
+}
 
 export async function GET(req: NextRequest) {
   const ctx = await getOperatorContextFromApiRequest(req)
@@ -70,13 +105,16 @@ export async function POST(req: NextRequest) {
     const operatorCtx = await getOperatorContextFromApiRequest(req)
     if (!operatorCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const operatorId = operatorCtx.operatorId
+    const mode = getLineTargetGuardMode()
+    const allowOverrideInMode = isOverrideAllowedInMode(mode)
+    const allowedOverrideRoles = getLineTargetOverrideRoles()
+    const dbUser = await prisma.user.findUnique({
+      where: { id: operatorId },
+      select: { role: true, sectionId: true },
+    })
+    if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     if (operatorCtx.source === 'nextauth') {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: operatorId },
-        select: { role: true, sectionId: true },
-      })
-      if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       const canWrite = await checkPermission({
         userId: operatorId,
         role: dbUser.role,
@@ -90,6 +128,80 @@ export async function POST(req: NextRequest) {
 
     if (!body.lineId) {
       return NextResponse.json({ error: 'lineId required' }, { status: 400 })
+    }
+
+    const line = await prisma.line.findUnique({
+      where: { id: body.lineId },
+      select: { id: true, lineCode: true, lineName: true, isActive: true },
+    })
+    if (!line) {
+      return NextResponse.json({ error: 'Line not found' }, { status: 404 })
+    }
+    if (!line.isActive) {
+      return NextResponse.json(
+        {
+          error: 'Line นี้ถูกปิดใช้งาน — กรุณาเปิดใช้งานใน Master ก่อน',
+          code: 'LINE_INACTIVE',
+        },
+        { status: 400 },
+      )
+    }
+
+    const activeTargetCount = await prisma.linePartTarget.count({
+      where: { lineId: body.lineId, isActive: true },
+    })
+    const hasActiveLineTarget = activeTargetCount > 0
+    const wantsOverride = parseBool(body.allowNoTargetOverride)
+    const overrideReason = typeof body.overrideReason === 'string' ? body.overrideReason.trim() : ''
+    const canRoleOverride = allowedOverrideRoles.has(dbUser.role)
+    const canOverrideMissingTarget = allowOverrideInMode && canRoleOverride
+    const overrideApplied = !hasActiveLineTarget && wantsOverride && canOverrideMissingTarget && overrideReason.length > 0
+
+    if (!hasActiveLineTarget) {
+      await prisma.auditLog.create({
+        data: {
+          userId: operatorId,
+          action: overrideApplied ? 'SESSION_GUARD_OVERRIDE' : 'SESSION_GUARD_WARN',
+          entity: 'production_sessions',
+          details: {
+            lineId: body.lineId,
+            lineCode: line.lineCode,
+            lineName: line.lineName,
+            activeLineTargetCount: activeTargetCount,
+            mode,
+            source: operatorCtx.source,
+            overrideRequested: wantsOverride,
+            overrideApplied,
+            overrideReason: overrideReason || null,
+          },
+        },
+      })
+    }
+
+    if (!hasActiveLineTarget && mode === 'enforce' && !overrideApplied) {
+      const roleText = [...allowedOverrideRoles].join(', ')
+      const missingReasonText = wantsOverride && overrideReason.length === 0
+      return NextResponse.json(
+        {
+          error: missingReasonText
+            ? 'ต้องระบุเหตุผลก่อนใช้สิทธิ์เปิด Session ชั่วคราว'
+            : canOverrideMissingTarget
+              ? 'ไม่มี LinePartTarget สำหรับสายนี้ — ไปตั้งค่าใน Master หรือใช้สิทธิ์เปิด Session ชั่วคราวพร้อมเหตุผล'
+              : `ไม่มี LinePartTarget สำหรับสายนี้ — กรุณาตั้งค่าใน Master (สิทธิ์ override: ${roleText})`,
+          code: 'LINE_TARGET_MISSING',
+          guard: {
+            mode,
+            lineId: body.lineId,
+            lineCode: line.lineCode,
+            lineName: line.lineName,
+            activeLineTargetCount: activeTargetCount,
+            canOverrideMissingTarget,
+            overrideRequested: wantsOverride,
+            overrideReasonRequired: wantsOverride && overrideReason.length === 0,
+          },
+        },
+        { status: 409 },
+      )
     }
 
     // ✅ ใช้เวลา server เป็นแหล่งเดียว แล้วแปลงเป็นปฏิทินไทยอย่าง deterministic
@@ -128,7 +240,23 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({ data: created }, { status: 201 })
+    const warning = !hasActiveLineTarget
+      ? {
+          code: 'LINE_TARGET_MISSING',
+          message: overrideApplied
+            ? 'เปิด Session ชั่วคราวแล้ว แม้ยังไม่มี LinePartTarget — กรุณาตั้งค่าใน Master โดยเร็ว'
+            : 'สายนี้ยังไม่มี LinePartTarget — เปิด Session ได้ชั่วคราว และควรตั้งค่าใน Master',
+          mode,
+          lineId: line.id,
+          lineCode: line.lineCode,
+          lineName: line.lineName,
+          activeLineTargetCount: activeTargetCount,
+          overrideApplied,
+          overrideReason: overrideApplied ? overrideReason : null,
+        }
+      : null
+
+    return NextResponse.json({ data: created, ...(warning ? { warning } : {}) }, { status: 201 })
   } catch (e: any) {
     console.error('POST /api/production/sessions error:', e)
     return NextResponse.json({ error: e.message ?? 'Internal server error' }, { status: 500 })
