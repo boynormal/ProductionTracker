@@ -197,13 +197,7 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
               )}
             </div>
 
-            <p className="mb-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-              {locale === 'th'
-                ? 'ค่าเริ่มต้นแสดงทุกรายการที่โหลดมา ไม่จำเป็นต้องกรอง — ปรับแหล่งที่มา สถานะ หรือฝ่ายเมื่อต้องการเท่านั้น'
-                : 'By default you see every item loaded for this page. Filtering is optional — use source, status, or division when you want a shorter list.'}
-            </p>
-
-            <p className="mb-2 text-xs font-medium text-slate-500">
+            <p className="mb-2 mt-4 text-xs font-medium text-slate-500">
               {locale === 'th' ? 'แหล่งที่มา' : 'Source'}
             </p>
             <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
