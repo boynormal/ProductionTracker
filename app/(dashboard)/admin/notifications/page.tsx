@@ -5,7 +5,7 @@ import { NotificationsClient } from './NotificationsLoader'
 
 export default async function NotificationsPage() {
   const session = await auth()
-  if (!session || !['ADMIN', 'MANAGER', 'SUPERVISOR'].includes(session.user.role)) redirect('/')
+  if (!session || session.user.role !== 'ADMIN') redirect('/')
 
   const notifications = await prisma.notification.findMany({
     orderBy: { createdAt: 'desc' },

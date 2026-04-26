@@ -7,10 +7,10 @@ import { useI18n } from '@/lib/i18n'
 interface HeaderProps {
   userName?: string
   userRole?: string
-  unreadCount?: number
+  alertBadgeCount?: number
 }
 
-export function Header({ userName, userRole, unreadCount = 0 }: HeaderProps) {
+export function Header({ userName, userRole, alertBadgeCount = 0 }: HeaderProps) {
   const { locale, setLocale } = useI18n()
 
   return (
@@ -36,9 +36,9 @@ export function Header({ userName, userRole, unreadCount = 0 }: HeaderProps) {
           className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 transition-colors"
         >
           <Bell size={18} />
-          {unreadCount > 0 && (
+          {alertBadgeCount > 0 && (
             <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-              {unreadCount > 9 ? '9+' : unreadCount}
+              {alertBadgeCount > 9 ? '9+' : alertBadgeCount}
             </span>
           )}
         </Link>

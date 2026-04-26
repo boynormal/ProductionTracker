@@ -54,6 +54,15 @@ function prettyText(value: string | null | undefined): string {
   return value.replaceAll('_', ' ')
 }
 
+function alertPriority(item: AlertItem): number {
+  if (item.channel === 'telegram' && item.status === 'failed') return 0
+  if (item.channel === 'telegram' && item.status === 'skipped') return 1
+  if (item.status === 'unread') return 2
+  if (item.channel === 'in_app' && item.status === 'read') return 3
+  if (item.channel === 'telegram' && item.status === 'sent') return 4
+  return 5
+}
+
 export function AlertsClient({ items, role, scopedDivisionId }: Props) {
   const { locale } = useI18n()
   const router = useRouter()
@@ -102,6 +111,16 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
       const prev = map.get(key) ?? []
       prev.push(item)
       map.set(key, prev)
+    }
+    for (const [key, value] of map.entries()) {
+      map.set(
+        key,
+        [...value].sort((a, b) => {
+          const priorityDiff = alertPriority(a) - alertPriority(b)
+          if (priorityDiff !== 0) return priorityDiff
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        }),
+      )
     }
     return map
   }, [filteredItems])
@@ -252,7 +271,17 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
                 </div>
                 <div className="divide-y divide-slate-100">
                   {divisionItems.map((item) => (
-                    <div key={item.id} className={cn('px-5 py-4', item.status === 'unread' ? 'bg-white' : 'bg-slate-50/50')}>
+                    <div
+                      key={item.id}
+                      className={cn(
+                        'px-5 py-4',
+                        item.channel === 'telegram' && item.status === 'sent'
+                          ? 'bg-slate-50/30 opacity-75'
+                          : item.status === 'unread'
+                            ? 'bg-white'
+                            : 'bg-slate-50/50',
+                      )}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -270,6 +299,13 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
                             {item.machineLabel && <span>{locale === 'th' ? 'เครื่อง' : 'Machine'}: {item.machineLabel}</span>}
                             {item.sentAt && <span>{locale === 'th' ? 'ส่งเมื่อ' : 'Sent at'}: {formatAlertTime(item.sentAt, locale)}</span>}
                           </div>
+                          {item.channel === 'telegram' && item.status === 'sent' && (
+                            <p className="mt-2 text-xs text-slate-400">
+                              {locale === 'th'
+                                ? 'รายการนี้เป็นประวัติการส่งสำเร็จ ไม่ใช่รายการที่ต้องติดตามทันที'
+                                : 'This item is successful delivery history, not an immediate action item'}
+                            </p>
+                          )}
                           {item.channel === 'telegram' && (
                             <p className="mt-2 text-xs text-slate-400">
                               {locale === 'th' ? 'อัปเดตอัตโนมัติทุก 1 นาที' : 'Auto-refreshes every 1 minute'}

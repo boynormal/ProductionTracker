@@ -44,7 +44,7 @@ export function NotificationsClient({
   const pageTitle =
     titleKey === 'alertsPage'
       ? (locale === 'th' ? 'การแจ้งเตือน' : 'Alerts')
-      : (locale === 'th' ? 'การแจ้งเตือน' : 'Notifications')
+      : (locale === 'th' ? 'รายการแจ้งเตือน' : 'Notification Records')
   const [markingAll, setMarkingAll] = useState(false)
   const [markingId, setMarkingId] = useState<string | null>(null)
 

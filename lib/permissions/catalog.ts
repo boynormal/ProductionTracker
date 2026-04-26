@@ -28,7 +28,7 @@ export const PERMISSION_CATALOG: PermissionCatalogItem[] = [
   { key: 'menu.master.departments', name: 'Master organization menu', resource: 'menu', action: 'view', category: 'MENU', path: '/master/departments', defaultRoles: ['MANAGER', 'ADMIN'] },
   { key: 'menu.admin.users', name: 'Admin users menu', resource: 'menu', action: 'view', category: 'MENU', path: '/admin/users', defaultRoles: ['ADMIN'] },
   { key: 'menu.admin.holidays', name: 'Admin holidays menu', resource: 'menu', action: 'view', category: 'MENU', path: '/admin/holidays', defaultRoles: ['MANAGER', 'ADMIN'] },
-  { key: 'menu.admin.notifications', name: 'Admin notifications menu', resource: 'menu', action: 'view', category: 'MENU', path: '/admin/notifications', defaultRoles: ['MANAGER', 'ADMIN'] },
+  { key: 'menu.admin.notifications', name: 'Admin notification records menu', resource: 'menu', action: 'view', category: 'MENU', path: '/admin/notifications', defaultRoles: ['ADMIN'] },
   { key: 'menu.admin.permissions', name: 'Admin permissions menu', resource: 'menu', action: 'view', category: 'MENU', path: '/admin/permissions', defaultRoles: ['ADMIN'] },
   { key: 'menu.admin.logs', name: 'Admin logs menu', resource: 'menu', action: 'view', category: 'MENU', path: '/admin/logs', defaultRoles: ['MANAGER', 'ADMIN'] },
 
