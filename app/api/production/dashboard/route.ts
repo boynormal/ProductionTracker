@@ -48,15 +48,39 @@ export async function GET(req: NextRequest) {
     toExclusive = range.toExclusive
   }
 
+  const divisionIdParam = searchParams.get('divisionId')?.trim()
   const sectionIdParam = searchParams.get('sectionId')?.trim()
   let lineFilter: Prisma.LineWhereInput | undefined
+
+  if (divisionIdParam) {
+    const division = await prisma.division.findFirst({
+      where: { id: divisionIdParam, isActive: true },
+      select: { id: true },
+    })
+    if (!division) {
+      return NextResponse.json({ error: 'Division not found' }, { status: 404 })
+    }
+
+    const divisionSections = await prisma.section.findMany({
+      where: {
+        isActive: true,
+        divisionId: divisionIdParam,
+      },
+      select: { id: true },
+    })
+    lineFilter = { sectionId: { in: divisionSections.map((s) => s.id) } }
+  }
+
   if (sectionIdParam) {
     const sec = await prisma.section.findFirst({
       where: { id: sectionIdParam, isActive: true },
-      select: { id: true },
+      select: { id: true, divisionId: true },
     })
     if (!sec) {
       return NextResponse.json({ error: 'Section not found' }, { status: 404 })
+    }
+    if (divisionIdParam && sec.divisionId !== divisionIdParam) {
+      return NextResponse.json({ error: 'Section does not belong to the selected division' }, { status: 400 })
     }
     lineFilter = { sectionId: sectionIdParam }
   }
@@ -97,6 +121,7 @@ export async function GET(req: NextRequest) {
     mode,
     from: from.toISOString().slice(0, 10),
     to: new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    divisionId: divisionIdParam || null,
     sectionId: sectionIdParam || null,
     sessions,
     activeSessions,

@@ -722,6 +722,11 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         .map((s) => ({
           id: String(s.id),
           shiftType: s.shiftType === 'NIGHT' ? 'NIGHT' as const : 'DAY' as const,
+          divisionName:
+            canonicalDivisionName(s.line?.section?.division?.divisionName) ??
+            s.line?.section?.division?.divisionName ??
+            s.line?.section?.division?.divisionCode ??
+            '—',
           lineCode: String(s.line?.lineCode ?? s.lineId ?? '—'),
         })),
     [filteredSessions],
@@ -953,6 +958,9 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
           <ul className="mt-2 list-inside list-disc text-xs text-blue-900/95">
             {openShiftBannerLines.map((r) => (
               <li key={r.id}>
+                {locale === 'th' ? 'ฝ่าย' : 'Division'}{' '}
+                <span className="font-semibold">{r.divisionName}</span>
+                {' · '}
                 {locale === 'th' ? 'สาย' : 'Line'}{' '}
                 <span className="font-mono font-semibold">{r.lineCode}</span>
                 {' · '}

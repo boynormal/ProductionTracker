@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   const todayIso = today.toISOString().slice(0, 10)
   const todayMonth = todayIso.slice(0, 7)
 
-  const [machines, activeSessions, unreadAlertsCount, totalMachines, sections] = await Promise.all([
+  const [machines, activeSessions, unreadAlertsCount, totalMachines, divisions, sections] = await Promise.all([
     prisma.productionSession.findMany({
       where: {
         ...reportingDateRangeWhere(today, dayEndExclusiveUTC(today), withLegacySessionDateFallback),
@@ -35,10 +35,24 @@ export default async function DashboardPage() {
     }),
     prisma.notification.count({ where: { isRead: false } }),
     prisma.machine.count({ where: { isActive: true } }),
+    prisma.division.findMany({
+      where: { isActive: true },
+      orderBy: { divisionCode: 'asc' },
+      select: { id: true, divisionCode: true, divisionName: true },
+    }),
     prisma.section.findMany({
       where: { isActive: true },
       orderBy: { sectionCode: 'asc' },
-      select: { id: true, sectionCode: true, sectionName: true },
+      select: {
+        id: true,
+        sectionCode: true,
+        sectionName: true,
+        division: {
+          select: {
+            id: true,
+          },
+        },
+      },
     }),
   ])
 
@@ -48,6 +62,7 @@ export default async function DashboardPage() {
         mode: 'day',
         from: todayIso,
         to: todayIso,
+        divisionId: null,
         sectionId: null,
         sessions: machines,
         activeSessions,
@@ -56,6 +71,7 @@ export default async function DashboardPage() {
       }))}
       initialDate={todayIso}
       initialMonth={todayMonth}
+      divisions={divisions}
       sections={sections}
       userName={session?.user?.name ?? ''}
     />
