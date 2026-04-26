@@ -48,7 +48,7 @@ const emptyMachineForm = {
   department: '',
 }
 
-/** สีการ์ดต่อสาย — วนซ้ำเมื่อสายมากกว่าจำนวนธีม */
+/** สีการ์ดต่อฝ่าย — วนซ้ำเมื่อฝ่ายมากกว่าจำนวนธีม */
 const LINE_CARD_THEMES = [
   { bar: 'border-l-rose-500', soft: 'bg-rose-50/80', accent: 'text-rose-700', dot: 'bg-rose-500' },
   { bar: 'border-l-orange-500', soft: 'bg-orange-50/80', accent: 'text-orange-800', dot: 'bg-orange-500' },
@@ -64,49 +64,60 @@ const LINE_CARD_THEMES = [
 
 type LineCardTheme = (typeof LINE_CARD_THEMES)[number]
 
-function themeIndexForLine(lineId: string | undefined, lines: { id: string }[]) {
-  const i = lines.findIndex(l => l.id === lineId)
+type MachineDisplayGroup = {
+  division: DivisionOpt | null
+  machines: any[]
+}
+
+function themeIndexForDivision(divisionId: string | undefined, divisionsList: DivisionOpt[]) {
+  if (!divisionId) return LINE_CARD_THEMES.length - 1
+  const i = divisionsList.findIndex((d) => d.id === divisionId)
   return i >= 0 ? i % LINE_CARD_THEMES.length : LINE_CARD_THEMES.length - 1
 }
 
-function groupMachinesByLineOrder(machines: any[], lines: any[]) {
-  const byLine = new Map<string, any[]>()
+function groupMachinesByDivisionOrder(machines: any[], divisionsOrdered: DivisionOpt[]): MachineDisplayGroup[] {
+  const byDiv = new Map<string, any[]>()
   for (const m of machines) {
-    const id = m.lineId ?? '_none'
-    if (!byLine.has(id)) byLine.set(id, [])
-    byLine.get(id)!.push(m)
+    const id = m.line?.section?.division?.id ?? '_none'
+    if (!byDiv.has(id)) byDiv.set(id, [])
+    byDiv.get(id)!.push(m)
   }
-  const out: { line: any | null; machines: any[] }[] = []
+  const out: MachineDisplayGroup[] = []
   const used = new Set<string>()
 
-  for (const l of lines) {
-    const ms = byLine.get(l.id)
+  for (const d of divisionsOrdered) {
+    const ms = byDiv.get(d.id)
     if (ms?.length) {
       out.push({
-        line: l,
+        division: d,
         machines: [...ms].sort((a, b) =>
-          String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true })
+          String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true }),
         ),
       })
-      used.add(l.id)
+      used.add(d.id)
     }
   }
 
-  for (const [id, ms] of Array.from(byLine.entries())) {
+  for (const [id, ms] of Array.from(byDiv.entries())) {
     if (used.has(id) || id === '_none') continue
-    const sorted = [...ms].sort((a, b) =>
-      String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true })
-    )
-    out.push({ line: sorted[0]?.line ?? null, machines: sorted })
+    const div = ms[0]?.line?.section?.division
+    out.push({
+      division: div
+        ? { id: div.id, divisionCode: div.divisionCode, divisionName: div.divisionName }
+        : null,
+      machines: [...ms].sort((a, b) =>
+        String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true }),
+      ),
+    })
     used.add(id)
   }
 
-  const none = byLine.get('_none')
+  const none = byDiv.get('_none')
   if (none?.length) {
     out.push({
-      line: null,
+      division: null,
       machines: [...none].sort((a, b) =>
-        String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true })
+        String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true }),
       ),
     })
   }
@@ -114,11 +125,11 @@ function groupMachinesByLineOrder(machines: any[], lines: any[]) {
   return out
 }
 
-const COLLAPSED_LINES_KEY = 'master-machines-collapsed-line-keys'
+const COLLAPSED_GROUPS_KEY = 'master-machines-collapsed-division-keys'
 const VIEW_MODE_KEY = 'master-machines-view'
 
-function lineSectionKey(line: any | null, ms: any[]) {
-  return line?.id ?? `orphan-${ms[0]?.id ?? 'x'}`
+function divisionSectionKey(division: DivisionOpt | null, ms: any[]) {
+  return division?.id ?? `orphan-${ms[0]?.id ?? 'x'}`
 }
 
 function machineMatchesSearch(m: any, qRaw: string): boolean {
@@ -166,11 +177,6 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
     })
   }, [lines, filterDivisionId, filterSectionId])
 
-  const linesForGrouping = useMemo(() => {
-    if (filterSectionId || filterDivisionId) return scopeLines
-    return lines
-  }, [lines, scopeLines, filterDivisionId, filterSectionId])
-
   useEffect(() => {
     if (lineFilter === 'all') return
     const l = lines.find((x: any) => x.id === lineFilter)
@@ -200,10 +206,10 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
     localStorage.setItem(VIEW_MODE_KEY, viewMode)
   }, [viewMode])
 
-  const [collapsedLineKeys, setCollapsedLineKeys] = useState<string[]>(() => {
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<string[]>(() => {
     if (typeof window === 'undefined') return []
     try {
-      const raw = sessionStorage.getItem(COLLAPSED_LINES_KEY)
+      const raw = sessionStorage.getItem(COLLAPSED_GROUPS_KEY)
       if (raw) {
         const p = JSON.parse(raw) as unknown
         if (Array.isArray(p)) return p.filter((x): x is string => typeof x === 'string')
@@ -212,9 +218,9 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
     return []
   })
   const persistCollapsed = useCallback((next: string[]) => {
-    setCollapsedLineKeys(next)
+    setCollapsedGroupKeys(next)
     try {
-      sessionStorage.setItem(COLLAPSED_LINES_KEY, JSON.stringify(next))
+      sessionStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(next))
     } catch {}
   }, [])
 
@@ -333,38 +339,48 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
 
   const deleteConfirmMatch = deleteConfirmText.trim().toLowerCase() === currentUserName.trim().toLowerCase()
 
-  const displayGroups =
+  const displayGroups: MachineDisplayGroup[] =
     lineFilter === 'all'
-      ? groupMachinesByLineOrder(filtered, linesForGrouping)
-      : [
-          {
-            line: lines.find((l: any) => l.id === lineFilter) ?? null,
-            machines: [...filtered].sort((a, b) =>
-              String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true })
-            ),
-          },
-        ].filter(g => g.machines.length > 0)
+      ? groupMachinesByDivisionOrder(filtered, divisions)
+      : (() => {
+          const sorted = [...filtered].sort((a, b) =>
+            String(a.mcNo ?? '').localeCompare(String(b.mcNo ?? ''), undefined, { numeric: true }),
+          )
+          if (sorted.length === 0) return []
+          const lineObj = lines.find((l: any) => l.id === lineFilter) as any
+          const div = lineObj?.section?.division
+          return [
+            {
+              division: div
+                ? { id: div.id, divisionCode: div.divisionCode, divisionName: div.divisionName }
+                : null,
+              machines: sorted,
+            },
+          ]
+        })()
 
   const displayGroupKeys = useMemo(
-    () => displayGroups.map(({ line, machines: ms }) => lineSectionKey(line, ms)),
+    () => displayGroups.map(({ division, machines: ms }) => divisionSectionKey(division, ms)),
     [displayGroups],
   )
 
+  const lineForSingleFilter = lineFilter !== 'all' ? (lines.find((l: any) => l.id === lineFilter) as any) : null
+
   const toggleSectionCollapsed = useCallback((key: string) => {
-    setCollapsedLineKeys((prev) => {
+    setCollapsedGroupKeys((prev) => {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
       try {
-        sessionStorage.setItem(COLLAPSED_LINES_KEY, JSON.stringify(next))
+        sessionStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(next))
       } catch {}
       return next
     })
   }, [])
 
-  const expandAllLineSections = useCallback(() => {
+  const expandAllSections = useCallback(() => {
     persistCollapsed([])
   }, [persistCollapsed])
 
-  const collapseAllLineSections = useCallback(() => {
+  const collapseAllSections = useCallback(() => {
     persistCollapsed(displayGroupKeys)
   }, [displayGroupKeys, persistCollapsed])
 
@@ -520,12 +536,12 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
             )}
             {lineFilter === 'all' && displayGroups.length > 1 && (
               <>
-                <Button type="button" variant="ghost" size="sm" className="gap-1" onClick={expandAllLineSections}>
+                <Button type="button" variant="ghost" size="sm" className="gap-1" onClick={expandAllSections}>
                   <ChevronsDownUp size={16} />
-                  {tr('ขยายทุกสาย', 'Expand all')}
+                  {tr('ขยายทุกฝ่าย', 'Expand all divisions')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={collapseAllLineSections}>
-                  {tr('พับทุกสาย', 'Collapse all')}
+                <Button type="button" variant="ghost" size="sm" onClick={collapseAllSections}>
+                  {tr('พับทุกฝ่าย', 'Collapse all divisions')}
                 </Button>
               </>
             )}
@@ -565,14 +581,18 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
         </div>
       ) : viewMode === 'table' ? (
         <div className="space-y-5">
-          {displayGroups.map(({ line, machines: ms }) => {
-            const sKey = lineSectionKey(line, ms)
-            const showLineHeader = lineFilter === 'all' && line
-            const sectionCollapsed = showLineHeader && collapsedLineKeys.includes(sKey)
-            const headerTheme = LINE_CARD_THEMES[themeIndexForLine(line?.id ?? ms[0]?.lineId, lines)]
+          {displayGroups.map(({ division, machines: ms }) => {
+            const sKey = divisionSectionKey(division, ms)
+            const showDivisionHeader = lineFilter === 'all'
+            const sectionCollapsed = showDivisionHeader && collapsedGroupKeys.includes(sKey)
+            const divIdForTheme = division?.id ?? ms[0]?.line?.section?.division?.id
+            const headerTheme = LINE_CARD_THEMES[themeIndexForDivision(divIdForTheme, divisions)]
+            const divisionTitle = division
+              ? `${division.divisionCode} — ${division.divisionName}`
+              : tr('ไม่ระบุฝ่าย', 'Unassigned division')
             return (
               <section key={sKey} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                {showLineHeader && (
+                {showDivisionHeader && (
                   <button
                     type="button"
                     aria-expanded={!sectionCollapsed}
@@ -585,17 +605,16 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                         aria-hidden
                       />
                       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${headerTheme.dot}`} aria-hidden />
-                      <span>{line.lineCode}</span>
-                      <span className="truncate font-normal text-slate-500">— {line.lineName}</span>
+                      <span className="truncate font-normal text-slate-700">{divisionTitle}</span>
                     </div>
                     <Badge variant="secondary" className="shrink-0 tabular-nums">
                       {ms.length}
                     </Badge>
                   </button>
                 )}
-                {lineFilter !== 'all' && line ? (
+                {lineFilter !== 'all' && lineForSingleFilter ? (
                   <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">
-                    {line.lineCode} — {line.lineName}
+                    {tr('สาย', 'Line')}: {lineForSingleFilter.lineCode} — {lineForSingleFilter.lineName}
                   </div>
                 ) : null}
                 {!sectionCollapsed && (
@@ -674,14 +693,18 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
         </div>
       ) : (
         <div className="space-y-8">
-          {displayGroups.map(({ line, machines: ms }) => {
-            const sKey = lineSectionKey(line, ms)
-            const showLineHeader = lineFilter === 'all' && line
-            const sectionCollapsed = showLineHeader && collapsedLineKeys.includes(sKey)
-            const headerTheme = LINE_CARD_THEMES[themeIndexForLine(line?.id ?? ms[0]?.lineId, lines)]
+          {displayGroups.map(({ division, machines: ms }) => {
+            const sKey = divisionSectionKey(division, ms)
+            const showDivisionHeader = lineFilter === 'all'
+            const sectionCollapsed = showDivisionHeader && collapsedGroupKeys.includes(sKey)
+            const divIdForTheme = division?.id ?? ms[0]?.line?.section?.division?.id
+            const headerTheme = LINE_CARD_THEMES[themeIndexForDivision(divIdForTheme, divisions)]
+            const divisionTitle = division
+              ? `${division.divisionCode} — ${division.divisionName}`
+              : tr('ไม่ระบุฝ่าย', 'Unassigned division')
             return (
               <section key={sKey}>
-                {showLineHeader && (
+                {showDivisionHeader && (
                   <button
                     type="button"
                     aria-expanded={!sectionCollapsed}
@@ -694,19 +717,18 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                         aria-hidden
                       />
                       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${headerTheme.dot}`} aria-hidden />
-                      <span>{line.lineCode}</span>
-                      <span className="truncate font-normal text-slate-500">— {line.lineName}</span>
+                      <span className="truncate font-normal text-slate-700">{divisionTitle}</span>
                     </span>
                     <Badge variant="secondary" className="tabular-nums">
                       {ms.length}
                     </Badge>
                   </button>
                 )}
-                {lineFilter !== 'all' && line ? (
+                {lineFilter !== 'all' && lineForSingleFilter ? (
                   <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
                     <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${headerTheme.dot}`} aria-hidden />
-                    <span>{line.lineCode}</span>
-                    <span className="font-normal text-slate-500">— {line.lineName}</span>
+                    <span>{tr('สาย', 'Line')}: {lineForSingleFilter.lineCode}</span>
+                    <span className="font-normal text-slate-500">— {lineForSingleFilter.lineName}</span>
                   </h2>
                 ) : null}
                 {!sectionCollapsed && (
@@ -715,7 +737,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                       <MachineCard
                         key={m.id}
                         machine={m}
-                        theme={LINE_CARD_THEMES[themeIndexForLine(m.lineId, lines)]}
+                        theme={LINE_CARD_THEMES[themeIndexForDivision(m.line?.section?.division?.id, divisions)]}
                         canEdit={canEdit}
                         locale={locale}
                         onDelete={() => {
