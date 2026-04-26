@@ -14,7 +14,7 @@ export function calcPerformance(okQty: number, targetQty: number): number {
 
 export function calcQuality(okQty: number, ngQty: number): number {
   const total = okQty + ngQty
-  if (total === 0) return 100
+  if (total === 0) return 0
   const raw = (okQty / total) * 100
   const floored = Math.floor(raw * 100) / 100
   return Math.min(100, Math.max(0, floored))
