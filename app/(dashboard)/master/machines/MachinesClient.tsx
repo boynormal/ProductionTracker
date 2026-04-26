@@ -197,26 +197,33 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
   const [lineSearchQuery, setLineSearchQuery] = useState('')
   const linePickerRef = useRef<HTMLDivElement | null>(null)
 
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
-    if (typeof window === 'undefined') return 'table'
-    const v = localStorage.getItem(VIEW_MODE_KEY)
-    return v === 'cards' ? 'cards' : 'table'
-  })
-  useEffect(() => {
-    localStorage.setItem(VIEW_MODE_KEY, viewMode)
-  }, [viewMode])
+  // SSR + first client paint must match — read localStorage/sessionStorage only after mount
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<string[]>([])
 
-  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return []
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(VIEW_MODE_KEY)
+      if (v === 'cards') setViewMode('cards')
+    } catch {}
     try {
       const raw = sessionStorage.getItem(COLLAPSED_GROUPS_KEY)
       if (raw) {
         const p = JSON.parse(raw) as unknown
-        if (Array.isArray(p)) return p.filter((x): x is string => typeof x === 'string')
+        if (Array.isArray(p)) {
+          const next = p.filter((x): x is string => typeof x === 'string')
+          if (next.length) setCollapsedGroupKeys(next)
+        }
       }
     } catch {}
-    return []
-  })
+  }, [])
+
+  const setViewModePersisted = useCallback((mode: 'table' | 'cards') => {
+    setViewMode(mode)
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode)
+    } catch {}
+  }, [])
   const persistCollapsed = useCallback((next: string[]) => {
     setCollapsedGroupKeys(next)
     try {
@@ -548,7 +555,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
             <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
               <button
                 type="button"
-                onClick={() => setViewMode('table')}
+                onClick={() => setViewModePersisted('table')}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm',
                   viewMode === 'table' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900',
@@ -559,7 +566,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode('cards')}
+                onClick={() => setViewModePersisted('cards')}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm',
                   viewMode === 'cards' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900',
