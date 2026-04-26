@@ -40,6 +40,9 @@ const mergedEnv = {
   ...process.env,
 }
 
+const appPort = mergedEnv.PORT || '3001'
+const appBaseUrl = mergedEnv.INTERNAL_APP_URL || `http://127.0.0.1:${appPort}`
+
 module.exports = {
   apps: [
     {
@@ -48,6 +51,17 @@ module.exports = {
       script: 'npm',
       args: 'start',
       env: mergedEnv,
+    },
+    {
+      name: 'productiontracker-hourly-alert-cron',
+      cwd,
+      script: 'node',
+      args: 'scripts/run-hourly-alert-cron.cjs',
+      env: {
+        ...mergedEnv,
+        INTERNAL_APP_URL: appBaseUrl,
+        TELEGRAM_HOURLY_CRON_SCHEDULE: mergedEnv.TELEGRAM_HOURLY_CRON_SCHEDULE || '*/10 * * * *',
+      },
     },
   ],
 }

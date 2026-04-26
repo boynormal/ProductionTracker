@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Bell, CheckCircle2, Filter, MessageSquareText, Radio, ShieldAlert } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils/cn'
@@ -55,13 +56,29 @@ function prettyText(value: string | null | undefined): string {
 
 export function AlertsClient({ items, role, scopedDivisionId }: Props) {
   const { locale } = useI18n()
+  const router = useRouter()
   const [selectedDivision, setSelectedDivision] = useState<string>(scopedDivisionId ?? 'all')
   const [channel, setChannel] = useState<ChannelFilter>('all')
   const [status, setStatus] = useState<StatusFilter>('all')
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      router.refresh()
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [router])
+
+  const baseFilteredItems = useMemo(() => {
+    return items.filter((item) => {
+      if (channel !== 'all' && item.channel !== channel) return false
+      if (status !== 'all' && item.status !== status) return false
+      return true
+    })
+  }, [items, channel, status])
+
   const divisions = useMemo(() => {
     const map = new Map<string, { id: string; name: string; unread: number; total: number }>()
-    for (const item of items) {
+    for (const item of baseFilteredItems) {
       const id = item.divisionId ?? 'unassigned'
       const prev = map.get(id) ?? { id, name: item.divisionName, unread: 0, total: 0 }
       prev.total += 1
@@ -69,16 +86,14 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
       map.set(id, prev)
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
-  }, [items])
+  }, [baseFilteredItems])
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
+    return baseFilteredItems.filter((item) => {
       if (selectedDivision !== 'all' && (item.divisionId ?? 'unassigned') !== selectedDivision) return false
-      if (channel !== 'all' && item.channel !== channel) return false
-      if (status !== 'all' && item.status !== status) return false
       return true
     })
-  }, [items, selectedDivision, channel, status])
+  }, [baseFilteredItems, selectedDivision])
 
   const groupedItems = useMemo(() => {
     const map = new Map<string, AlertItem[]>()
@@ -145,7 +160,7 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
                 )}
               >
                 <span>{locale === 'th' ? 'ทุกฝ่าย' : 'All divisions'}</span>
-                <Badge variant="outline">{items.length}</Badge>
+                <Badge variant="outline">{baseFilteredItems.length}</Badge>
               </button>
               {divisions.map((division) => (
                 <button
@@ -255,6 +270,11 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
                             {item.machineLabel && <span>{locale === 'th' ? 'เครื่อง' : 'Machine'}: {item.machineLabel}</span>}
                             {item.sentAt && <span>{locale === 'th' ? 'ส่งเมื่อ' : 'Sent at'}: {formatAlertTime(item.sentAt, locale)}</span>}
                           </div>
+                          {item.channel === 'telegram' && (
+                            <p className="mt-2 text-xs text-slate-400">
+                              {locale === 'th' ? 'อัปเดตอัตโนมัติทุก 1 นาที' : 'Auto-refreshes every 1 minute'}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-slate-400">
                           {item.channel === 'telegram' ? <MessageSquareText size={18} /> : <Bell size={18} />}

@@ -204,7 +204,7 @@ export default async function AlertsPage() {
     lineCode: null,
     machineLabel: null,
     alertType: log.alertType,
-    title: 'Telegram Delivery',
+    title: `Hourly Summary${log.divisionName ? ` · ${log.divisionName}` : ''}`,
     message: log.message,
     status: log.status.toLowerCase(),
     isRead: true,
