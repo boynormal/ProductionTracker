@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, CheckCircle2, Filter, MessageSquareText, Radio, ShieldAlert } from 'lucide-react'
+import { Bell, CheckCircle2, Layers, MessageSquareText, Radio, SlidersHorizontal, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils/cn'
 import { useI18n } from '@/lib/i18n'
 import type { AlertItem } from './page'
@@ -24,6 +25,15 @@ const channelLabels: Record<ChannelFilter, { th: string; en: string }> = {
   all: { th: 'ทั้งหมด', en: 'All' },
   in_app: { th: 'ในระบบ', en: 'In-app' },
   telegram: { th: 'Telegram', en: 'Telegram' },
+}
+
+const statusLabels: Record<StatusFilter, { th: string; en: string }> = {
+  all: { th: 'ทั้งหมด', en: 'All' },
+  unread: { th: 'ยังไม่อ่าน', en: 'Unread' },
+  read: { th: 'อ่านแล้ว', en: 'Read' },
+  sent: { th: 'ส่งแล้ว', en: 'Sent' },
+  failed: { th: 'ล้มเหลว', en: 'Failed' },
+  skipped: { th: 'ข้าม', en: 'Skipped' },
 }
 
 function formatAlertTime(iso: string, locale: string): string {
@@ -162,24 +172,100 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="space-y-4">
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)]">
+        <aside className="lg:sticky lg:top-4 lg:self-start">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <ShieldAlert size={16} className="text-blue-600" />
-              {locale === 'th' ? 'ฝ่าย' : 'Divisions'}
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <SlidersHorizontal size={18} className="shrink-0 text-blue-600" />
+                {locale === 'th' ? 'กรองรายการ' : 'Refine list'}
+              </div>
+              {(channel !== 'all' || status !== 'all') && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 gap-1 px-2 text-xs text-slate-600"
+                  onClick={() => {
+                    setChannel('all')
+                    setStatus('all')
+                  }}
+                >
+                  <X size={14} />
+                  {locale === 'th' ? 'ล้าง' : 'Clear'}
+                </Button>
+              )}
             </div>
-            <div className="space-y-2">
+
+            <p className="mb-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+              {locale === 'th'
+                ? 'ค่าเริ่มต้นแสดงทุกรายการที่โหลดมา ไม่จำเป็นต้องกรอง — ปรับแหล่งที่มา สถานะ หรือฝ่ายเมื่อต้องการเท่านั้น'
+                : 'By default you see every item loaded for this page. Filtering is optional — use source, status, or division when you want a shorter list.'}
+            </p>
+
+            <p className="mb-2 text-xs font-medium text-slate-500">
+              {locale === 'th' ? 'แหล่งที่มา' : 'Source'}
+            </p>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+              {(['all', 'in_app', 'telegram'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setChannel(value)}
+                  className={cn(
+                    'rounded-lg px-2 py-2 text-center text-xs font-medium transition-all sm:text-sm',
+                    channel === value
+                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                >
+                  {channelLabels[value][locale === 'th' ? 'th' : 'en']}
+                </button>
+              ))}
+            </div>
+
+            <p className="mb-2 mt-5 text-xs font-medium text-slate-500">
+              {locale === 'th' ? 'สถานะ' : 'Status'}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['all', 'unread', 'read', 'sent', 'failed', 'skipped'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatus(value)}
+                  className={cn(
+                    'rounded-lg border px-2 py-2 text-left text-xs font-medium transition-colors sm:text-sm',
+                    status === value
+                      ? 'border-blue-200 bg-blue-50 text-blue-800'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                  )}
+                >
+                  {statusLabels[value][locale === 'th' ? 'th' : 'en']}
+                </button>
+              ))}
+            </div>
+
+            <Separator className="my-5 bg-slate-200" />
+
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500">
+              <Layers size={14} className="text-slate-400" />
+              {locale === 'th' ? 'ฝ่าย' : 'Division'}
+            </div>
+            <div className="max-h-[min(52vh,28rem)] space-y-1.5 overflow-y-auto pr-1">
               <button
                 type="button"
                 onClick={() => setSelectedDivision('all')}
                 className={cn(
-                  'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
-                  selectedDivision === 'all' ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                  'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors',
+                  selectedDivision === 'all'
+                    ? 'border-blue-200 bg-blue-50 text-blue-800'
+                    : 'border-transparent bg-slate-50 text-slate-700 hover:bg-slate-100',
                 )}
               >
-                <span>{locale === 'th' ? 'ทุกฝ่าย' : 'All divisions'}</span>
-                <Badge variant="outline">{baseFilteredItems.length}</Badge>
+                <span className="min-w-0 truncate font-medium">{locale === 'th' ? 'ทุกฝ่าย' : 'All divisions'}</span>
+                <Badge variant="secondary" className="shrink-0 tabular-nums">
+                  {baseFilteredItems.length}
+                </Badge>
               </button>
               {divisions.map((division) => (
                 <button
@@ -187,46 +273,25 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
                   type="button"
                   onClick={() => setSelectedDivision(division.id)}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors',
-                    selectedDivision === division.id ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                    'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors',
+                    selectedDivision === division.id
+                      ? 'border-blue-200 bg-blue-50 text-blue-800'
+                      : 'border-transparent bg-slate-50 text-slate-700 hover:bg-slate-100',
                   )}
                 >
-                  <span className="truncate">{division.name}</span>
-                  <div className="flex items-center gap-2">
-                    {division.unread > 0 && <Badge variant="destructive">{division.unread}</Badge>}
-                    <Badge variant="outline">{division.total}</Badge>
+                  <span className="min-w-0 truncate font-medium">{division.name}</span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {division.unread > 0 && (
+                      <Badge variant="destructive" className="tabular-nums">
+                        {division.unread}
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className="tabular-nums">
+                      {division.total}
+                    </Badge>
                   </div>
                 </button>
               ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <Filter size={16} className="text-blue-600" />
-              {locale === 'th' ? 'ตัวกรอง' : 'Filters'}
-            </div>
-            <div className="space-y-4">
-              <div>
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Channel</div>
-                <div className="flex flex-wrap gap-2">
-                  {(['all', 'in_app', 'telegram'] as const).map((value) => (
-                    <Button key={value} size="sm" variant={channel === value ? 'default' : 'outline'} onClick={() => setChannel(value)}>
-                      {channelLabels[value][locale === 'th' ? 'th' : 'en']}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Status</div>
-                <div className="flex flex-wrap gap-2">
-                  {(['all', 'unread', 'read', 'sent', 'failed', 'skipped'] as const).map((value) => (
-                    <Button key={value} size="sm" variant={status === value ? 'default' : 'outline'} onClick={() => setStatus(value)}>
-                      {prettyText(value)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         </aside>
@@ -246,11 +311,15 @@ export function AlertsClient({ items, role, scopedDivisionId }: Props) {
                     : `${filteredItems.length} items match the current filters`}
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Radio size={14} />
-                {channelLabels[channel][locale === 'th' ? 'th' : 'en']}
-                <span>·</span>
-                {prettyText(status)}
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <Radio size={14} className="shrink-0" />
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                  {channelLabels[channel][locale === 'th' ? 'th' : 'en']}
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                  {statusLabels[status][locale === 'th' ? 'th' : 'en']}
+                </span>
               </div>
             </div>
           </div>
