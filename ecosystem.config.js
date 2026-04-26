@@ -33,6 +33,12 @@ const fileEnv = {
   ...readEnvFile(path.join(cwd, '.env')),
   ...readEnvFile(path.join(cwd, '.env.local')),
 }
+const mergedEnv = {
+  NODE_ENV: 'production',
+  PORT: '3001',
+  ...fileEnv,
+  ...process.env,
+}
 
 module.exports = {
   apps: [
@@ -41,11 +47,7 @@ module.exports = {
       cwd,
       script: 'npm',
       args: 'start',
-      env: {
-        NODE_ENV: 'production',
-        ...fileEnv,
-        ...process.env,
-      },
+      env: mergedEnv,
     },
   ],
 }
