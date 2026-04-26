@@ -408,7 +408,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
       {/* Filters + view controls (sticky) */}
       <div className="sticky top-0 z-20 space-y-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <div className="min-w-[180px] space-y-1.5">
               <label className="block text-xs font-medium text-slate-600">
                 {tr('ชื่อฝ่าย', 'Division')}
