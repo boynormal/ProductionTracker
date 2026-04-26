@@ -559,6 +559,27 @@ model Notification {
   @@map("notifications")
 }
 
+model TelegramAlertLog {
+  id           String   @id @default(cuid())
+  alertType    String
+  divisionId   String?
+  chatId       String?
+  windowStart  DateTime
+  windowEnd    DateTime
+  windowKey    String
+  status       String
+  message      String
+  errorMessage String?
+  sentAt       DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([alertType, divisionId, windowKey])
+  @@index([divisionId, createdAt])
+  @@index([alertType, windowStart])
+  @@map("telegram_alert_logs")
+}
+
 enum NotificationType {
   MISSING_RECORD
   LOW_PRODUCTION
