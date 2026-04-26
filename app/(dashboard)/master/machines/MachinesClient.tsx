@@ -385,28 +385,29 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
   }, [displayGroupKeys, persistCollapsed])
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">{t('masterMachines')}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {filtered.length} / {machines.length} {locale === 'th' ? 'เครื่อง' : 'machines'}
-          </p>
+    <div className="-mt-4 space-y-5 sm:-mt-6">
+      <div className="sticky top-0 z-20 space-y-4 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">{t('masterMachines')}</h1>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {filtered.length} / {machines.length} {locale === 'th' ? 'เครื่อง' : 'machines'}
+            </p>
+          </div>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setForm(emptyMachineForm)
+                setAddOpen(true)
+              }}
+              className="flex shrink-0 items-center gap-2 self-start rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 sm:self-auto"
+            >
+              <Plus size={16} />
+              {locale === 'th' ? 'เพิ่มเครื่อง' : 'Add Machine'}
+            </button>
+          )}
         </div>
-        {canEdit && (
-          <button
-            onClick={() => { setForm(emptyMachineForm); setAddOpen(true) }}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={16} />
-            {locale === 'th' ? 'เพิ่มเครื่อง' : 'Add Machine'}
-          </button>
-        )}
-      </div>
-
-      {/* Filters + view controls (sticky) */}
-      <div className="sticky top-0 z-20 space-y-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div className="flex flex-wrap items-start gap-3">
             <div className="min-w-[180px] space-y-1.5">
