@@ -86,7 +86,17 @@ export async function GET(req: NextRequest) {
   const include = detailed
     ? {
         machine:  true,
-        line:     true,
+        line:     {
+          include: {
+            section: {
+              include: {
+                division: {
+                  include: { department: true },
+                },
+              },
+            },
+          },
+        },
         operator: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
         hourlyRecords: {
           include: {
@@ -100,7 +110,17 @@ export async function GET(req: NextRequest) {
       }
     : {
         machine:  true,
-        line:     true,
+        line:     {
+          include: {
+            section: {
+              include: {
+                division: {
+                  include: { department: true },
+                },
+              },
+            },
+          },
+        },
         operator: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
         _count:   { select: { hourlyRecords: true } },
       }
