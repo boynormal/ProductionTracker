@@ -274,7 +274,9 @@ async function main() {
   console.log(`   ✅ ${secIdMap.size} sections`)
 
   const defaultPwHash = await bcrypt.hash('changeme123', 10)
-  const adminPwHash   = await bcrypt.hash('admin1234', 10)
+  const adminSeedPassword = process.env.SEED_ADMIN_PASSWORD?.trim() || ''
+  if (!adminSeedPassword) throw new Error('Missing SEED_ADMIN_PASSWORD')
+  const adminPwHash   = await bcrypt.hash(adminSeedPassword, 10)
 
   console.log('👥 Upsert users...')
   let created = 0
@@ -352,7 +354,7 @@ async function main() {
   console.log('   ✅ ADMIN001 (สร้างถ้ายังไม่มี)')
   console.log('\n═══════════════════════════════════════════')
   console.log('  พนักงานใหม่: รหัสผ่าน changeme123')
-  console.log('  Admin:       ADMIN001 / admin1234')
+  console.log('  Admin:       รหัสผ่านตั้งค่าจาก environment')
   console.log('═══════════════════════════════════════════\n')
 }
 

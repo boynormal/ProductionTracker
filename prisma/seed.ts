@@ -3,9 +3,14 @@ import bcrypt from 'bcryptjs'
 import { seedPermissions } from './seed-permissions'
 
 const prisma = new PrismaClient()
+const adminSeedPassword = process.env.SEED_ADMIN_PASSWORD?.trim() || ''
+const operatorSeedPassword = process.env.SEED_OPERATOR_PASSWORD?.trim() || ''
 
 async function main() {
   console.log('🌱 Seeding database...')
+  if (!adminSeedPassword || !operatorSeedPassword) {
+    throw new Error('Missing SEED_ADMIN_PASSWORD or SEED_OPERATOR_PASSWORD')
+  }
 
   // 1. Organization Structure
   const deptProd = await prisma.department.upsert({
@@ -133,7 +138,7 @@ async function main() {
       employeeCode: 'ADMIN001',
       firstName: 'ผู้ดูแล',
       lastName: 'ระบบ',
-      passwordHash: await bcrypt.hash('admin1234', 10),
+      passwordHash: await bcrypt.hash(adminSeedPassword, 10),
       role: 'ADMIN',
       departmentId: deptProd.id,
     },
@@ -147,7 +152,7 @@ async function main() {
       employeeCode: '1-68176',
       firstName: 'สมศักดิ์',
       lastName: 'ใจดี',
-      passwordHash: await bcrypt.hash('operator123', 10),
+      passwordHash: await bcrypt.hash(operatorSeedPassword, 10),
       pin: '1234',
       role: 'OPERATOR',
       sectionId: secPD21.id,
@@ -157,8 +162,7 @@ async function main() {
   })
 
   console.log('✅ Seed completed!')
-  console.log('   Admin:    ADMIN001 / admin1234')
-  console.log('   Operator: 1-68176 / operator123 (PIN: 1234)')
+  console.log('   Seeded users are ready.')
 
   await seedPermissions(prisma)
   console.log('✅ Permissions seeded from catalog')

@@ -63,7 +63,7 @@ export function LoginClient() {
               </label>
               <input
                 {...register('employeeCode')}
-                placeholder="เช่น ADMIN001 หรือ 1-68176"
+                placeholder="เช่น รหัสพนักงานของคุณ"
                 className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
               />
               {errors.employeeCode && (
@@ -106,12 +106,6 @@ export function LoginClient() {
               {t('login')}
             </button>
           </form>
-
-          {/* Demo hint */}
-          <div className="mt-5 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-            <p className="font-medium text-slate-600 mb-1">Demo Account:</p>
-            <p>Admin: <span className="font-mono">ADMIN001</span> / <span className="font-mono">admin1234</span></p>
-          </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-blue-300">

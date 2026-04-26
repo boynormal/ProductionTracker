@@ -502,7 +502,9 @@ async function main() {
   // ── 5. Create Users ───────────────────────────────────────────────────────
   console.log('👥 Importing users...')
   const defaultPwHash = await bcrypt.hash('changeme123', 10)
-  const adminPwHash   = await bcrypt.hash('admin1234',   10)
+  const adminSeedPassword = process.env.SEED_ADMIN_PASSWORD?.trim() || ''
+  if (!adminSeedPassword) throw new Error('Missing SEED_ADMIN_PASSWORD')
+  const adminPwHash   = await bcrypt.hash(adminSeedPassword, 10)
 
   // Admin account
   await prisma.user.create({
@@ -550,7 +552,7 @@ async function main() {
     })
     userCount++
   }
-  console.log(`   ✅ ${userCount} users (ADMIN001/admin1234 + ${userCount - 1} employees/changeme123)`)
+  console.log(`   ✅ ${userCount} users (ADMIN001 + ${userCount - 1} employees/changeme123)`)
 
   // ── 6. Parse CAP_Summary sheet ────────────────────────────────────────────
   const capWs   = wb.Sheets['CAP_Summary']
@@ -859,7 +861,7 @@ async function main() {
   console.log(`  Targets     : ${targetCount}`)
   console.log(`  LineTargets : ${lineTargetCount}`)
   console.log('───────────────────────────────────────────')
-  console.log('  Login: ADMIN001 / admin1234')
+  console.log('  Login: ADMIN001 / รหัสผ่านจาก environment')
   console.log('  Staff: <employeeCode> / changeme123')
   console.log('  PIN:   last 4 digits of employee code')
   console.log('═══════════════════════════════════════════\n')

@@ -39,5 +39,4 @@ Write-Host "===================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  รัน:    npm run dev"             -ForegroundColor White
 Write-Host "  URL:    http://localhost:3000"    -ForegroundColor Cyan
-Write-Host "  Admin:  ADMIN001 / admin1234"     -ForegroundColor Cyan
 Write-Host ""
