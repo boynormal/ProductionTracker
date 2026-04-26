@@ -1,16 +1,32 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Search, Plus, Cpu, ChevronRight, X, AlertTriangle, Loader2, ImageIcon } from 'lucide-react'
+import {
+  Search,
+  Plus,
+  Cpu,
+  ChevronRight,
+  ChevronDown,
+  ChevronsDownUp,
+  X,
+  AlertTriangle,
+  Loader2,
+  ImageIcon,
+  LayoutGrid,
+  List,
+} from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { cn } from '@/lib/utils/cn'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
 
 type DivisionOpt = { id: string; divisionCode: string; divisionName: string }
@@ -98,6 +114,22 @@ function groupMachinesByLineOrder(machines: any[], lines: any[]) {
   return out
 }
 
+const COLLAPSED_LINES_KEY = 'master-machines-collapsed-line-keys'
+const VIEW_MODE_KEY = 'master-machines-view'
+
+function lineSectionKey(line: any | null, ms: any[]) {
+  return line?.id ?? `orphan-${ms[0]?.id ?? 'x'}`
+}
+
+function machineMatchesSearch(m: any, qRaw: string): boolean {
+  const q = qRaw.trim().toLowerCase()
+  if (!q) return true
+  const hay = [m.mcNo, m.mcName, m.assetCode, m.brand, m.serialNo]
+    .filter(Boolean)
+    .map((s: string) => String(s).toLowerCase())
+  return hay.some((s) => s.includes(q))
+}
+
 export function MachinesClient({ machines, lines, divisions, sections, userRole }: Props) {
   const { t, locale } = useI18n()
   const { data: session } = useSession()
@@ -155,6 +187,59 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
 
+  const [linePickerOpen, setLinePickerOpen] = useState(false)
+  const [lineSearchQuery, setLineSearchQuery] = useState('')
+  const linePickerRef = useRef<HTMLDivElement | null>(null)
+
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    if (typeof window === 'undefined') return 'table'
+    const v = localStorage.getItem(VIEW_MODE_KEY)
+    return v === 'cards' ? 'cards' : 'table'
+  })
+  useEffect(() => {
+    localStorage.setItem(VIEW_MODE_KEY, viewMode)
+  }, [viewMode])
+
+  const [collapsedLineKeys, setCollapsedLineKeys] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = sessionStorage.getItem(COLLAPSED_LINES_KEY)
+      if (raw) {
+        const p = JSON.parse(raw) as unknown
+        if (Array.isArray(p)) return p.filter((x): x is string => typeof x === 'string')
+      }
+    } catch {}
+    return []
+  })
+  const persistCollapsed = useCallback((next: string[]) => {
+    setCollapsedLineKeys(next)
+    try {
+      sessionStorage.setItem(COLLAPSED_LINES_KEY, JSON.stringify(next))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (!linePickerOpen) return
+    const h = (e: MouseEvent) => {
+      if (!linePickerRef.current?.contains(e.target as Node)) setLinePickerOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [linePickerOpen])
+
+  const linesForPicker = useMemo(() => {
+    const q = lineSearchQuery.trim().toLowerCase()
+    let rows = scopeLines as any[]
+    if (q) {
+      rows = rows.filter(
+        (l) =>
+          String(l.lineCode ?? '').toLowerCase().includes(q) ||
+          String(l.lineName ?? '').toLowerCase().includes(q),
+      )
+    }
+    return rows
+  }, [scopeLines, lineSearchQuery])
+
   const filtered = machines.filter((m) => {
     const line = m.line
     if (filterSectionId) {
@@ -163,12 +248,28 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
       if (line?.section?.division?.id !== filterDivisionId) return false
     }
     const matchLine = lineFilter === 'all' || m.lineId === lineFilter
-    const matchSearch =
-      !search ||
-      m.mcNo.toLowerCase().includes(search.toLowerCase()) ||
-      m.mcName.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = machineMatchesSearch(m, search)
     return matchLine && matchSearch
   })
+
+  const hasActiveFilters = Boolean(search || filterDivisionId || filterSectionId || lineFilter !== 'all')
+
+  const clearFilters = useCallback(() => {
+    setSearch('')
+    setFilterDivisionId('')
+    setFilterSectionId('')
+    setLineFilter('all')
+    setLineSearchQuery('')
+    setLinePickerOpen(false)
+  }, [])
+
+  const selectedLine = lineFilter === 'all' ? null : (lines.find((l: any) => l.id === lineFilter) as any)
+  const selectedLineLabel =
+    lineFilter === 'all'
+      ? tr('ทุกสาย', 'All lines')
+      : selectedLine
+        ? `${selectedLine.lineCode} — ${selectedLine.lineName ?? ''}`
+        : tr('ทุกสาย', 'All lines')
 
   const canEdit = ['ADMIN', 'ENGINEER'].includes(userRole ?? '')
   const currentUserName = session?.user?.name ?? ''
@@ -244,6 +345,29 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
           },
         ].filter(g => g.machines.length > 0)
 
+  const displayGroupKeys = useMemo(
+    () => displayGroups.map(({ line, machines: ms }) => lineSectionKey(line, ms)),
+    [displayGroups],
+  )
+
+  const toggleSectionCollapsed = useCallback((key: string) => {
+    setCollapsedLineKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      try {
+        sessionStorage.setItem(COLLAPSED_LINES_KEY, JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [])
+
+  const expandAllLineSections = useCallback(() => {
+    persistCollapsed([])
+  }, [persistCollapsed])
+
+  const collapseAllLineSections = useCallback(() => {
+    persistCollapsed(displayGroupKeys)
+  }, [displayGroupKeys, persistCollapsed])
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -265,106 +389,343 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
         )}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 sm:gap-4">
-        <div className="min-w-[180px] space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600">
-            {tr('ชื่อฝ่าย', 'Division')}
-          </label>
-          <select
-            value={filterDivisionId}
-            onChange={(e) => onDivisionChange(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-          >
-            <option value="">{tr('— ทุกฝ่าย —', '— All divisions —')}</option>
-            {divisions.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.divisionCode} — {d.divisionName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[180px] space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600">Section</label>
-          <select
-            value={filterSectionId}
-            onChange={(e) => {
-              const id = e.target.value
-              setFilterSectionId(id)
-              if (id) {
-                const divId = sections.find((s) => s.id === id)?.divisionId
-                if (divId) setFilterDivisionId(divId)
-              }
-            }}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-          >
-            <option value="">{tr('— ทุก Section —', '— All sections —')}</option>
-            {sectionFilterOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.sectionCode} — {s.sectionName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="min-w-[140px] space-y-1.5">
-          <label className="block text-xs font-medium text-slate-600">{t('line')}</label>
-          <select
-            value={lineFilter}
-            onChange={e => setLineFilter(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
-          >
-            <option value="all">{locale === 'th' ? 'ทุกสาย' : 'All Lines'}</option>
-            {scopeLines.map((l: any) => (
-              <option key={l.id} value={l.id}>{l.lineCode}</option>
-            ))}
-          </select>
-        </div>
-        <div className="relative min-w-[12rem] flex-1">
-          <label className="mb-1.5 block text-xs font-medium text-slate-600">{tr('ค้นหา', 'Search')}</label>
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={locale === 'th' ? 'ค้นหาเครื่อง...' : 'Search machines...'}
-              className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-            />
+      {/* Filters + view controls (sticky) */}
+      <div className="sticky top-0 z-20 space-y-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[180px] space-y-1.5">
+              <label className="block text-xs font-medium text-slate-600">
+                {tr('ชื่อฝ่าย', 'Division')}
+              </label>
+              <select
+                value={filterDivisionId}
+                onChange={(e) => onDivisionChange(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="">{tr('— ทุกฝ่าย —', '— All divisions —')}</option>
+                {divisions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.divisionCode} — {d.divisionName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[180px] space-y-1.5">
+              <label className="block text-xs font-medium text-slate-600">{tr('Section', 'Section')}</label>
+              <select
+                value={filterSectionId}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setFilterSectionId(id)
+                  if (id) {
+                    const divId = sections.find((s) => s.id === id)?.divisionId
+                    if (divId) setFilterDivisionId(divId)
+                  }
+                }}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="">{tr('— ทุก Section —', '— All sections —')}</option>
+                {sectionFilterOptions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.sectionCode} — {s.sectionName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[200px] space-y-1.5" ref={linePickerRef}>
+              <label className="block text-xs font-medium text-slate-600">{t('line')}</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setLinePickerOpen((o) => !o)}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                >
+                  <span className="truncate">{selectedLineLabel}</span>
+                  <ChevronDown size={16} className="shrink-0 text-slate-400" />
+                </button>
+                {linePickerOpen && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                    <div className="border-b border-slate-100 p-2">
+                      <Input
+                        value={lineSearchQuery}
+                        onChange={(e) => setLineSearchQuery(e.target.value)}
+                        placeholder={tr('ค้นหารหัสสาย...', 'Filter lines...')}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="max-h-52 overflow-y-auto py-1">
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex w-full px-3 py-2 text-left text-sm hover:bg-slate-50',
+                          lineFilter === 'all' && 'bg-blue-50 font-medium text-blue-800',
+                        )}
+                        onClick={() => {
+                          setLineFilter('all')
+                          setLinePickerOpen(false)
+                          setLineSearchQuery('')
+                        }}
+                      >
+                        {tr('ทุกสาย', 'All lines')}
+                      </button>
+                      {linesForPicker.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-slate-500">{tr('ไม่พบสาย', 'No lines match')}</p>
+                      ) : (
+                        linesForPicker.map((l: any) => (
+                          <button
+                            key={l.id}
+                            type="button"
+                            className={cn(
+                              'flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-slate-50',
+                              lineFilter === l.id && 'bg-blue-50 text-blue-800',
+                            )}
+                            onClick={() => {
+                              setLineFilter(l.id)
+                              setLinePickerOpen(false)
+                              setLineSearchQuery('')
+                            }}
+                          >
+                            <span className="font-medium">{l.lineCode}</span>
+                            {l.lineName ? <span className="text-xs text-slate-500">{l.lineName}</span> : null}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="relative min-w-[12rem] flex-1 basis-[220px]">
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">{tr('ค้นหา', 'Search')}</label>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={
+                    locale === 'th'
+                      ? 'รหัสเครื่อง, ชื่อ, Asset, ยี่ห้อ, Serial...'
+                      : 'Machine no., name, asset, brand, serial...'
+                  }
+                  className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {hasActiveFilters && (
+              <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+                {tr('ล้างตัวกรอง', 'Clear filters')}
+              </Button>
+            )}
+            {lineFilter === 'all' && displayGroups.length > 1 && (
+              <>
+                <Button type="button" variant="ghost" size="sm" className="gap-1" onClick={expandAllLineSections}>
+                  <ChevronsDownUp size={16} />
+                  {tr('ขยายทุกสาย', 'Expand all')}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={collapseAllLineSections}>
+                  {tr('พับทุกสาย', 'Collapse all')}
+                </Button>
+              </>
+            )}
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm',
+                  viewMode === 'table' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900',
+                )}
+              >
+                <List size={16} />
+                {tr('ตาราง', 'Table')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm',
+                  viewMode === 'cards' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900',
+                )}
+              >
+                <LayoutGrid size={16} />
+                {tr('การ์ด', 'Cards')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Machine list */}
       {filtered.length === 0 ? (
-        <div className="rounded-xl bg-white border border-slate-100 py-16 text-center">
+        <div className="rounded-xl border border-slate-100 bg-white py-16 text-center">
           <Cpu size={40} className="mx-auto mb-3 text-slate-200" />
           <p className="text-slate-400">{t('noData')}</p>
+        </div>
+      ) : viewMode === 'table' ? (
+        <div className="space-y-5">
+          {displayGroups.map(({ line, machines: ms }) => {
+            const sKey = lineSectionKey(line, ms)
+            const showLineHeader = lineFilter === 'all' && line
+            const sectionCollapsed = showLineHeader && collapsedLineKeys.includes(sKey)
+            const headerTheme = LINE_CARD_THEMES[themeIndexForLine(line?.id ?? ms[0]?.lineId, lines)]
+            return (
+              <section key={sKey} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                {showLineHeader && (
+                  <button
+                    type="button"
+                    aria-expanded={!sectionCollapsed}
+                    onClick={() => toggleSectionCollapsed(sKey)}
+                    className="flex w-full items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-left transition-colors hover:bg-slate-100"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold text-slate-800">
+                      <ChevronDown
+                        className={cn('h-4 w-4 shrink-0 text-slate-500 transition-transform', sectionCollapsed && '-rotate-90')}
+                        aria-hidden
+                      />
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${headerTheme.dot}`} aria-hidden />
+                      <span>{line.lineCode}</span>
+                      <span className="truncate font-normal text-slate-500">— {line.lineName}</span>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0 tabular-nums">
+                      {ms.length}
+                    </Badge>
+                  </button>
+                )}
+                {lineFilter !== 'all' && line ? (
+                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">
+                    {line.lineCode} — {line.lineName}
+                  </div>
+                ) : null}
+                {!sectionCollapsed && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="whitespace-nowrap px-3 py-2 text-xs sm:text-sm">
+                            {tr('รหัสเครื่อง', 'Machine no.')}
+                          </TableHead>
+                          <TableHead className="min-w-[8rem] px-3 py-2 text-xs sm:text-sm">{tr('ชื่อ', 'Name')}</TableHead>
+                          <TableHead className="whitespace-nowrap px-3 py-2 text-xs sm:text-sm">{tr('สาย', 'Line')}</TableHead>
+                          <TableHead className="min-w-[7rem] px-3 py-2 text-xs sm:text-sm">{tr('ฝ่าย', 'Division')}</TableHead>
+                          <TableHead className="whitespace-nowrap px-3 py-2 text-xs sm:text-sm">{tr('ยี่ห้อ', 'Brand')}</TableHead>
+                          <TableHead className="whitespace-nowrap px-3 py-2 text-xs sm:text-sm">Asset</TableHead>
+                          <TableHead className="whitespace-nowrap px-3 py-2 text-right text-xs sm:text-sm">
+                            {tr('Part ที่ใช้', 'Active parts')}
+                          </TableHead>
+                          <TableHead className="w-[1%] whitespace-nowrap px-3 py-2 text-right text-xs sm:text-sm">
+                            {tr('การทำงาน', 'Actions')}
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ms.map((m: any) => {
+                          const divMeta = m.line?.section?.division
+                          const divLabel = divMeta
+                            ? [divMeta.divisionCode, divMeta.divisionName].filter(Boolean).join(' · ')
+                            : '—'
+                          const partCount = m.partTargets?.length ?? 0
+                          return (
+                            <TableRow key={m.id} className="text-sm">
+                              <TableCell className="whitespace-nowrap px-3 py-2 font-medium text-slate-900">{m.mcNo}</TableCell>
+                              <TableCell className="max-w-[14rem] truncate px-3 py-2 text-slate-700">{m.mcName ?? '—'}</TableCell>
+                              <TableCell className="whitespace-nowrap px-3 py-2 text-slate-600">{m.line?.lineCode ?? '—'}</TableCell>
+                              <TableCell className="max-w-[12rem] truncate px-3 py-2 text-slate-600">{divLabel}</TableCell>
+                              <TableCell className="whitespace-nowrap px-3 py-2 text-slate-600">{m.brand ?? '—'}</TableCell>
+                              <TableCell className="whitespace-nowrap px-3 py-2 text-slate-600">{m.assetCode ?? '—'}</TableCell>
+                              <TableCell className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700">
+                                {partCount}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap px-3 py-2 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDeleteTarget(m)
+                                        setDeleteConfirmText('')
+                                      }}
+                                      className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                                      title={locale === 'th' ? 'ลบ' : 'Delete'}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  )}
+                                  <Link
+                                    href={`/master/machines/${m.id}`}
+                                    className="inline-flex items-center gap-0.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50"
+                                  >
+                                    {locale === 'th' ? 'รายละเอียด' : 'Details'}
+                                    <ChevronRight size={12} />
+                                  </Link>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </section>
+            )
+          })}
         </div>
       ) : (
         <div className="space-y-8">
           {displayGroups.map(({ line, machines: ms }) => {
-            const sectionKey = line?.id ?? `orphan-${ms[0]?.id ?? 'x'}`
+            const sKey = lineSectionKey(line, ms)
+            const showLineHeader = lineFilter === 'all' && line
+            const sectionCollapsed = showLineHeader && collapsedLineKeys.includes(sKey)
             const headerTheme = LINE_CARD_THEMES[themeIndexForLine(line?.id ?? ms[0]?.lineId, lines)]
             return (
-              <section key={sectionKey}>
-                {lineFilter === 'all' && line && (
+              <section key={sKey}>
+                {showLineHeader && (
+                  <button
+                    type="button"
+                    aria-expanded={!sectionCollapsed}
+                    onClick={() => toggleSectionCollapsed(sKey)}
+                    className="mb-3 flex w-full max-w-4xl items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <ChevronDown
+                        className={cn('h-4 w-4 shrink-0 text-slate-500 transition-transform', sectionCollapsed && '-rotate-90')}
+                        aria-hidden
+                      />
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${headerTheme.dot}`} aria-hidden />
+                      <span>{line.lineCode}</span>
+                      <span className="truncate font-normal text-slate-500">— {line.lineName}</span>
+                    </span>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {ms.length}
+                    </Badge>
+                  </button>
+                )}
+                {lineFilter !== 'all' && line ? (
                   <h2 className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
                     <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${headerTheme.dot}`} aria-hidden />
                     <span>{line.lineCode}</span>
                     <span className="font-normal text-slate-500">— {line.lineName}</span>
                   </h2>
+                ) : null}
+                {!sectionCollapsed && (
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                    {ms.map((m: any) => (
+                      <MachineCard
+                        key={m.id}
+                        machine={m}
+                        theme={LINE_CARD_THEMES[themeIndexForLine(m.lineId, lines)]}
+                        canEdit={canEdit}
+                        locale={locale}
+                        onDelete={() => {
+                          setDeleteTarget(m)
+                          setDeleteConfirmText('')
+                        }}
+                      />
+                    ))}
+                  </div>
                 )}
-                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {ms.map((m: any) => (
-                    <MachineCard
-                      key={m.id}
-                      machine={m}
-                      theme={LINE_CARD_THEMES[themeIndexForLine(m.lineId, lines)]}
-                      canEdit={canEdit}
-                      locale={locale}
-                      onDelete={() => { setDeleteTarget(m); setDeleteConfirmText('') }}
-                    />
-                  ))}
-                </div>
               </section>
             )
           })}

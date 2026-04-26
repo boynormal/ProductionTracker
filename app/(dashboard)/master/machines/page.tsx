@@ -23,7 +23,8 @@ export default async function MachinesPage() {
           orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }],
           take: 1,
         },
-        partTargets: { where: { isActive: true }, include: { part: true } },
+        // List view: ids only — detail page loads full targets
+        partTargets: { where: { isActive: true }, select: { id: true } },
       },
       orderBy: [{ line: { lineCode: 'asc' } }, { mcNo: 'asc' }],
     }),
