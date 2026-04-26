@@ -416,7 +416,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
               <select
                 value={filterDivisionId}
                 onChange={(e) => onDivisionChange(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="">{tr('— ทุกฝ่าย —', '— All divisions —')}</option>
                 {divisions.map((d) => (
@@ -438,7 +438,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                     if (divId) setFilterDivisionId(divId)
                   }
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="">{tr('— ทุก Section —', '— All sections —')}</option>
                 {sectionFilterOptions.map((s) => (
@@ -454,7 +454,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                 <button
                   type="button"
                   onClick={() => setLinePickerOpen((o) => !o)}
-                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-left text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 >
                   <span className="truncate">{selectedLineLabel}</span>
                   <ChevronDown size={16} className="shrink-0 text-slate-400" />
@@ -511,10 +511,10 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                 )}
               </div>
             </div>
-            <div className="relative min-w-[12rem] flex-1 basis-[220px]">
-              <label className="mb-1.5 block text-xs font-medium text-slate-600">{tr('ค้นหา', 'Search')}</label>
+            <div className="relative min-w-[12rem] flex-1 basis-[220px] space-y-1.5">
+              <label className="block text-xs font-medium text-slate-600">{tr('ค้นหา', 'Search')}</label>
               <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -523,7 +523,7 @@ export function MachinesClient({ machines, lines, divisions, sections, userRole 
                       ? 'รหัสเครื่อง, ชื่อ, Asset, ยี่ห้อ, Serial...'
                       : 'Machine no., name, asset, brand, serial...'
                   }
-                  className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm leading-none text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
