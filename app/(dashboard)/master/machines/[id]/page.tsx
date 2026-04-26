@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma'
+import { cn } from '@/lib/utils/cn'
+import { DASHBOARD_THEAD_STICKY } from '@/lib/dashboard-sticky-table-classes'
 import { auth } from '@/lib/auth'
 import { notFound } from 'next/navigation'
 import { format } from 'date-fns'
@@ -344,7 +346,7 @@ export default async function MachineDetailPage({
         ) : (
           <div className="overflow-x-auto -mx-5">
             <table className="w-full text-sm">
-              <thead>
+              <thead className={cn(DASHBOARD_THEAD_STICKY, 'bg-white shadow-sm')}>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">
                   <th className="px-5 py-2">Part Samco</th>
                   <th className="px-3 py-2">Part Name</th>

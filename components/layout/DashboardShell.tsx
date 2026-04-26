@@ -39,8 +39,11 @@ export function DashboardShell({ children, userName, userRole, alertBadgeCount =
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header userName={userName} userRole={userRole} alertBadgeCount={alertBadgeCount} />
-        <main className="flex min-h-0 flex-1 min-w-0 flex-col overflow-auto p-4 sm:p-6 pb-[5.5rem] lg:pb-6">
-          {children}
+        {/* No padding-top on scroll `main` — it breaks sticky table headers (gap + rows showing above thead). */}
+        <main className="flex min-h-0 flex-1 min-w-0 flex-col overflow-auto px-4 sm:px-6">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-[5.5rem] pt-4 sm:pt-6 lg:pb-6">
+            {children}
+          </div>
         </main>
       </div>
 

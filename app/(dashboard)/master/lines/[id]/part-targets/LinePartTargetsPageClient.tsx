@@ -7,6 +7,8 @@ import { Loader2, Pencil, Ban, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils/cn'
+import { DASHBOARD_THEAD_STICKY } from '@/lib/dashboard-sticky-table-classes'
 
 export type PartOption = {
   id: string
@@ -361,8 +363,8 @@ export function LinePartTargetsPageClient({
 
       <div className="min-w-0 overflow-auto rounded-lg border border-slate-200">
         <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <thead className={cn(DASHBOARD_THEAD_STICKY, 'bg-slate-50 shadow-sm')}>
+            <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               <th className="px-2 py-2">Samco</th>
               <th className="px-2 py-2">Part</th>
               <th className="px-2 py-2">Cust.</th>

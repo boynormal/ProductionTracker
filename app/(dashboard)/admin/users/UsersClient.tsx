@@ -11,7 +11,11 @@ import { toast } from 'sonner'
 import { useI18n } from '@/lib/i18n'
 import { Search, Plus, Pencil, UserCheck, UserX } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
-import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
+import {
+  DASHBOARD_TABLE_BASE,
+  DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
+  DASHBOARD_THEAD_STICKY,
+} from '@/lib/dashboard-sticky-table-classes'
 
 const ROLES = ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] as const
 const roleBadge: Record<string, string> = {
@@ -265,7 +269,7 @@ export function UsersClient({ users, departments, divisions, sections, parts }: 
 
       <div className="w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm">
         <table className={DASHBOARD_TABLE_BASE}>
-          <thead>
+          <thead className={DASHBOARD_THEAD_STICKY}>
             <tr>
               <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'รหัส' : 'Code'}</th>
               <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'คำนำหน้า' : 'Title'}</th>

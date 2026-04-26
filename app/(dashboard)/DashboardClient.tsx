@@ -13,7 +13,11 @@ import {
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { cn } from '@/lib/utils/cn'
-import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
+import {
+  DASHBOARD_TABLE_BASE,
+  DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
+  DASHBOARD_THEAD_STICKY,
+} from '@/lib/dashboard-sticky-table-classes'
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -333,7 +337,7 @@ export function DashboardClient({
         ) : (
           <div className="overflow-x-auto">
             <table className={DASHBOARD_TABLE_BASE}>
-              <thead>
+              <thead className={DASHBOARD_THEAD_STICKY}>
                 <tr>
                   {mode === 'month' ? <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'วันที่' : 'Date'}</th> : null}
                   <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t('machine')}</th>

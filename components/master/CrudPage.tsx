@@ -13,7 +13,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CRUD_SELECT_NONE } from '@/lib/crud-select'
-import { DASHBOARD_TABLE_BASE, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
+import {
+  DASHBOARD_TABLE_BASE,
+  DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
+  DASHBOARD_THEAD_STICKY,
+} from '@/lib/dashboard-sticky-table-classes'
 
 export interface Column {
   key: string
@@ -285,7 +289,7 @@ export function CrudPage({
 
       <div className="w-full min-w-0 rounded-xl bg-white border border-slate-100 shadow-sm">
         <table className={DASHBOARD_TABLE_BASE}>
-          <thead>
+          <thead className={DASHBOARD_THEAD_STICKY}>
             <tr>
               <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'w-10')}>#</th>
               {columns.map(col => (

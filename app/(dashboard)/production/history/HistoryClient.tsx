@@ -25,6 +25,7 @@ import {
   DASHBOARD_TABLE_WRAP,
   DASHBOARD_TABLE_WIDE,
   DASHBOARD_TH_STICKY_SOLID,
+  DASHBOARD_THEAD_STICKY,
 } from '@/lib/dashboard-sticky-table-classes'
 
 interface LineRow {
@@ -992,7 +993,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
       ) : (
         <div className={cn(DASHBOARD_TABLE_WRAP, loading && 'opacity-60 pointer-events-none')}>
           <table className={DASHBOARD_TABLE_WIDE}>
-            <thead>
+            <thead className={DASHBOARD_THEAD_STICKY}>
               <tr>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'ชิ้นงาน' : 'Part'}</th>
@@ -1273,7 +1274,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                               {locale === 'th' ? 'สรุปรวมชิ้นงาน' : 'Part Summary'}
                             </div>
                             <table className="w-full text-[10px] border-collapse">
-                              <thead>
+                              <thead className={cn(DASHBOARD_THEAD_STICKY, 'bg-slate-100')}>
                                 <tr className="border-b border-slate-200 bg-slate-100">
                                   <th className="text-left py-1.5 px-1 font-semibold text-slate-700">Part</th>
                                   <th className="text-right py-1.5 px-1 font-semibold text-slate-700">Qty</th>

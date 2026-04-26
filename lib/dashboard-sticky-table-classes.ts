@@ -1,8 +1,8 @@
 /**
- * คลาสหัวตารางแบบ sticky สำหรับแดชบอร์ด — อิง padding ของ <main> (p-4 / sm:p-6)
- * ห่อตารางด้วย wrap ที่ไม่มี overflow-x-auto; เลื่อนแนวนอนใน <main> (DashboardShell)
+ * คลาสตารางแดชบอร์ด — หัวตารางยึดด้วย `<thead className={DASHBOARD_THEAD_STICKY}>` เมื่อเลื่อนใน <main> (DashboardShell)
+ * หรือในกล่องที่มี overflow-auto (เช่น Logs)
  *
- * สีหัวตารางใช้ชุดเดียว: bg-slate-100 + text-slate-700 + font-semibold
+ * สีหัวคอลัมน์: bg-slate-100 + text-slate-700 + font-semibold
  */
 
 export const DASHBOARD_TABLE_WRAP =
@@ -17,20 +17,23 @@ export const DASHBOARD_TABLE_REPORT = 'w-full min-w-[520px] border-separate bord
 /** ตารางทั่วไป (CRUD, MTBF, dashboard) */
 export const DASHBOARD_TABLE_BASE = 'w-full border-separate border-spacing-0 bg-white text-sm'
 
+/** ใส่ที่ <thead> — ยึดทั้งแถวหัวเมื่อเลื่อนแนวตั้ง */
+export const DASHBOARD_THEAD_STICKY = 'sticky top-0 z-20'
+
+/** หัวตารางในกล่องเลื่อนแยก (ซ้อนเหนือแถวข้อมูลใน scrollport เดียวกัน) */
+export const DASHBOARD_THEAD_STICKY_ELEVATED = 'sticky top-0 z-30'
+
 /** ประวัติการผลิต — ช่องคอมแพ็ก */
 export const DASHBOARD_TH_STICKY_SOLID =
-  'sticky top-[-1rem] sm:top-[-1.5rem] z-20 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
+  'border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
 
 /** รายงาน SimpleTable — คอมแพ็ก + กันหัวคอลัมน์ตัดบรรทัด */
 export const DASHBOARD_TH_STICKY_SOFT =
-  'sticky top-[-1rem] sm:top-[-1.5rem] z-20 whitespace-nowrap border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
+  'whitespace-nowrap border border-slate-200 bg-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
 
 /** CRUD / MTBF / แดชบอร์ด / แอดมิน — ช่องกว้าง */
 export const DASHBOARD_TH_STICKY_SOFT_COMFORTABLE =
-  'sticky top-[-1rem] sm:top-[-1.5rem] z-20 border border-slate-200 bg-slate-100 px-4 py-3 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
-
-/** offset แนวบนสำหรับซ้อนกับ sticky แนวนอน (มุมเมทริกซ์รายงาน) */
-export const DASHBOARD_STICKY_TOP_INSET = 'top-[-1rem] sm:top-[-1.5rem]'
+  'border border-slate-200 bg-slate-100 px-4 py-3 text-left text-xs font-semibold text-slate-700 shadow-[0_1px_0_0_rgb(226_232_240)]'
 
 /** พื้นหัวคอลัมน์ในเมทริกซ์รายงาน (ต่อกับ border ซ้าย/ล่างแยกตามคอลัมน์) */
 export const DASHBOARD_MATRIX_TH_HEAD =

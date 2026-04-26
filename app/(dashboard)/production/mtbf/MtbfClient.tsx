@@ -5,7 +5,12 @@ import { useI18n } from '@/lib/i18n'
 import { Activity, Loader2, Wrench, AlertTriangle, Clock } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { cn } from '@/lib/utils/cn'
-import { DASHBOARD_TABLE_BASE, DASHBOARD_TABLE_WRAP, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
+import {
+  DASHBOARD_TABLE_BASE,
+  DASHBOARD_TABLE_WRAP,
+  DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
+  DASHBOARD_THEAD_STICKY,
+} from '@/lib/dashboard-sticky-table-classes'
 
 interface MtbfRow {
   machineId: string
@@ -205,7 +210,7 @@ export function MtbfClient({ divisions, lines, machines }: Props) {
         </div>
         <div className={showTable ? DASHBOARD_TABLE_WRAP : 'hidden'}>
           <table className={cn(DASHBOARD_TABLE_BASE, 'min-w-[56rem]')}>
-            <thead>
+            <thead className={DASHBOARD_THEAD_STICKY}>
               <tr>
                 <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'สาย' : 'Line'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'เครื่อง' : 'Machine'}</th>

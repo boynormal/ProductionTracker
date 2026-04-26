@@ -10,10 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils/cn'
 import {
   DASHBOARD_MATRIX_TH_HEAD,
-  DASHBOARD_STICKY_TOP_INSET,
   DASHBOARD_TABLE_REPORT,
   DASHBOARD_TABLE_WRAP,
   DASHBOARD_TH_STICKY_SOFT,
+  DASHBOARD_THEAD_STICKY,
 } from '@/lib/dashboard-sticky-table-classes'
 import {
   MAX_PRODUCTION_REPORT_RANGE_DAYS,
@@ -528,12 +528,11 @@ function OperatorMonthMatrixTable({
   return (
     <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
       <table className="min-w-max border-separate border-spacing-0 text-sm">
-        <thead>
+        <thead className={cn(DASHBOARD_THEAD_STICKY, 'z-40 bg-slate-100 shadow-sm')}>
           <tr>
             <th
               className={cn(
                 'sticky z-40 border-r border-slate-200 px-2 py-2 text-left',
-                DASHBOARD_STICKY_TOP_INSET,
                 DASHBOARD_MATRIX_TH_HEAD,
                 'left-0',
                 codeW,
@@ -544,7 +543,6 @@ function OperatorMonthMatrixTable({
             <th
               className={cn(
                 'sticky z-40 min-w-[10rem] w-[10rem] border-r border-slate-200 px-2 py-2 text-left',
-                DASHBOARD_STICKY_TOP_INSET,
                 DASHBOARD_MATRIX_TH_HEAD,
                 nameSticky,
               )}
@@ -555,8 +553,7 @@ function OperatorMonthMatrixTable({
               <th
                 key={d}
                 className={cn(
-                  'sticky z-20 min-w-[5.5rem] max-w-[6.5rem] px-1 py-2 text-center leading-tight',
-                  DASHBOARD_STICKY_TOP_INSET,
+                  'min-w-[5.5rem] max-w-[6.5rem] px-1 py-2 text-center leading-tight',
                   DASHBOARD_MATRIX_TH_HEAD,
                 )}
               >
@@ -642,7 +639,7 @@ function SimpleTable({
   return (
     <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
       <table className={DASHBOARD_TABLE_REPORT}>
-        <thead>
+        <thead className={DASHBOARD_THEAD_STICKY}>
           <tr>
             {cols.map((c) => (
               <th key={c} className={DASHBOARD_TH_STICKY_SOFT}>

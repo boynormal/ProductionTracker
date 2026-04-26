@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { DASHBOARD_TABLE_BASE, DASHBOARD_TABLE_WRAP, DASHBOARD_TH_STICKY_SOFT_COMFORTABLE } from '@/lib/dashboard-sticky-table-classes'
+import {
+  DASHBOARD_TABLE_BASE,
+  DASHBOARD_TABLE_WRAP,
+  DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
+  DASHBOARD_THEAD_STICKY_ELEVATED,
+} from '@/lib/dashboard-sticky-table-classes'
 import { cn } from '@/lib/utils/cn'
 
 type TabKey = 'audit' | 'system' | 'notifications'
@@ -50,8 +55,6 @@ function severityBadge(severity: 'INFO' | 'WARN' | 'ERROR') {
   if (severity === 'WARN') return 'bg-amber-100 text-amber-700'
   return 'bg-blue-100 text-blue-700'
 }
-
-const LOGS_STICKY_TH = `${DASHBOARD_TH_STICKY_SOFT_COMFORTABLE} top-0 z-30`
 
 export function LogsClient() {
   const { locale, t } = useI18n()
@@ -289,14 +292,14 @@ export function LogsClient() {
       {tab === 'audit' ? (
         <div className={cn(DASHBOARD_TABLE_WRAP, 'relative max-h-[65vh] overflow-auto')}>
           <table className={cn(DASHBOARD_TABLE_BASE, 'min-w-[64rem]')}>
-            <thead>
+            <thead className={cn(DASHBOARD_THEAD_STICKY_ELEVATED, 'bg-slate-100 shadow-sm')}>
               <tr>
-                <th className={LOGS_STICKY_TH}>Time</th>
-                <th className={LOGS_STICKY_TH}>Entity</th>
-                <th className={LOGS_STICKY_TH}>Action</th>
-                <th className={LOGS_STICKY_TH}>Entity ID</th>
-                <th className={LOGS_STICKY_TH}>User</th>
-                <th className={LOGS_STICKY_TH}>Details</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Time</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Entity</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Action</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Entity ID</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>User</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Details</th>
               </tr>
             </thead>
             <tbody>
@@ -320,15 +323,15 @@ export function LogsClient() {
       {tab === 'system' ? (
         <div className={cn(DASHBOARD_TABLE_WRAP, 'relative max-h-[65vh] overflow-auto')}>
           <table className={cn(DASHBOARD_TABLE_BASE, 'min-w-[72rem]')}>
-            <thead>
+            <thead className={cn(DASHBOARD_THEAD_STICKY_ELEVATED, 'bg-slate-100 shadow-sm')}>
               <tr>
-                <th className={LOGS_STICKY_TH}>Time</th>
-                <th className={LOGS_STICKY_TH}>Severity</th>
-                <th className={LOGS_STICKY_TH}>Source</th>
-                <th className={LOGS_STICKY_TH}>Message</th>
-                <th className={LOGS_STICKY_TH}>Path</th>
-                <th className={LOGS_STICKY_TH}>User</th>
-                <th className={LOGS_STICKY_TH}>Details</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Time</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Severity</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Source</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Message</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Path</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>User</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Details</th>
               </tr>
             </thead>
             <tbody>
@@ -355,15 +358,15 @@ export function LogsClient() {
       {tab === 'notifications' ? (
         <div className={cn(DASHBOARD_TABLE_WRAP, 'relative max-h-[65vh] overflow-auto')}>
           <table className={cn(DASHBOARD_TABLE_BASE, 'min-w-[68rem]')}>
-            <thead>
+            <thead className={cn(DASHBOARD_THEAD_STICKY_ELEVATED, 'bg-slate-100 shadow-sm')}>
               <tr>
-                <th className={LOGS_STICKY_TH}>Time</th>
-                <th className={LOGS_STICKY_TH}>Type</th>
-                <th className={LOGS_STICKY_TH}>Severity</th>
-                <th className={LOGS_STICKY_TH}>Title</th>
-                <th className={LOGS_STICKY_TH}>Target Role</th>
-                <th className={LOGS_STICKY_TH}>Sent Via</th>
-                <th className={LOGS_STICKY_TH}>Details</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Time</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Type</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Severity</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Title</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Target Role</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Sent Via</th>
+                <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>Details</th>
               </tr>
             </thead>
             <tbody>
