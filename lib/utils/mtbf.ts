@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 
 export interface MtbfResult {
   machineId:        string
@@ -22,6 +23,8 @@ export async function calcMtbfMttr(
   startDate: Date,
   endExclusiveDate: Date,
 ): Promise<MtbfResult> {
+  const withLegacySessionDateFallback = false
+
   // หา lineId ของเครื่องนี้
   const machine = await prisma.machine.findUnique({
     where: { id: machineId },
@@ -32,8 +35,8 @@ export async function calcMtbfMttr(
     prisma.productionSession.findMany({
       where: {
         lineId:      machine?.lineId ?? '__none__',
-        status:      'COMPLETED',
-        sessionDate: { gte: startDate, lt: endExclusiveDate },
+        ...reportingDateRangeWhere(startDate, endExclusiveDate, withLegacySessionDateFallback),
+        status:      { in: ['IN_PROGRESS', 'COMPLETED'] },
       },
       select: { totalHours: true },
     }),
@@ -44,8 +47,8 @@ export async function calcMtbfMttr(
         breakdownEnd: { not: null },
         hourlyRecord: {
           session: {
-            status:      'COMPLETED',
-            sessionDate: { gte: startDate, lt: endExclusiveDate },
+            ...reportingDateRangeWhere(startDate, endExclusiveDate, withLegacySessionDateFallback),
+            status:      { in: ['IN_PROGRESS', 'COMPLETED'] },
           },
         },
       },
