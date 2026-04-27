@@ -610,6 +610,16 @@ export function RecordClient({
   const loadInProgressSessionForLine = useCallback(async (lineId: string, signal?: AbortSignal) => {
     if (!lineId) return null
     try {
+      const sameReportingDate = (sessionLike: any, reportingDateIso: string) => {
+        const dt = sessionLike?.reportingDate ?? sessionLike?.sessionDate
+        if (!dt) return false
+        try {
+          return formatThaiDateUTCISO(new Date(dt)) === reportingDateIso
+        } catch {
+          return false
+        }
+      }
+
       const fetchSessionDetailById = async (sessionId: string) => {
         if (!sessionId) return null
         const detailRes = await fetch(`/api/production/sessions/${sessionId}`, { signal })
@@ -632,7 +642,8 @@ export function RecordClient({
             pinnedDetail &&
             pinnedDetail.status === 'IN_PROGRESS' &&
             pinnedDetail.lineId === lineId &&
-            pinnedDetail.shiftType === shiftNow
+            pinnedDetail.shiftType === shiftNow &&
+            sameReportingDate(pinnedDetail, reportingDateStr)
           ) {
             setSessionData(pinnedDetail)
             return pinnedDetail
@@ -658,13 +669,15 @@ export function RecordClient({
           fallbackSession?.id &&
           fallbackSession?.lineId === lineId &&
           fallbackSession?.status === 'IN_PROGRESS' &&
-          fallbackSession?.shiftType === shiftNow
+          fallbackSession?.shiftType === shiftNow &&
+          sameReportingDate(fallbackSession, reportingDateStr)
         ) {
           const fallbackDetail = await fetchSessionDetailById(String(fallbackSession.id))
           if (
             fallbackDetail &&
             fallbackDetail.lineId === lineId &&
-            fallbackDetail.shiftType === shiftNow
+            fallbackDetail.shiftType === shiftNow &&
+            sameReportingDate(fallbackDetail, reportingDateStr)
           ) {
             setSessionData(fallbackDetail)
             return fallbackDetail
@@ -685,7 +698,7 @@ export function RecordClient({
       }
       const latestSessionId = String(sessions[0]?.id ?? '')
       const latestDetail = await fetchSessionDetailById(latestSessionId)
-      if (latestDetail && latestDetail.shiftType === shiftNow) {
+      if (latestDetail && latestDetail.shiftType === shiftNow && sameReportingDate(latestDetail, reportingDateStr)) {
         setSessionData(latestDetail)
         return latestDetail
       }

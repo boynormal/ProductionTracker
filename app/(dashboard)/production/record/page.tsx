@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import { getOperatorIdFromCookies } from '@/lib/operator-auth'
 import { getCurrentShift } from '@/lib/utils/shift'
-import { getThaiTodayUTC } from '@/lib/utils/thai-time'
+import { getThaiTodayUTC, getThaiReportingDateUTC } from '@/lib/utils/thai-time'
 import { sectionWhereMasterList } from '@/lib/org-filters'
 import { RecordClient } from './RecordLoader'
 
@@ -56,6 +56,7 @@ export default async function RecordPage({
   }
 
   const today = getThaiTodayUTC()
+  const reportingToday = getThaiReportingDateUTC()
   const shift = getCurrentShift()
 
   const machines = requiresScanPin
@@ -68,7 +69,7 @@ export default async function RecordPage({
           hourlyRecords: {
             where: {
               session: {
-                sessionDate: today,
+                reportingDate: reportingToday,
                 shiftType: shift,
                 status: 'IN_PROGRESS',
               },
@@ -121,7 +122,7 @@ export default async function RecordPage({
     existingSession = await prisma.productionSession.findFirst({
       where: {
         lineId: lockedLine.id,
-        sessionDate: today,
+        reportingDate: reportingToday,
         shiftType: shift,
         status: 'IN_PROGRESS',
       },
@@ -133,7 +134,7 @@ export default async function RecordPage({
       ? await prisma.productionSession.findFirst({
           where: {
             lineId: m.lineId,
-            sessionDate: today,
+            reportingDate: reportingToday,
             shiftType: shift,
             status: 'IN_PROGRESS',
           },
@@ -174,7 +175,7 @@ export default async function RecordPage({
     const latestRows = await prisma.hourlyRecord.findMany({
       where: {
         session: {
-          sessionDate: today,
+          reportingDate: reportingToday,
           status: { in: ['IN_PROGRESS', 'COMPLETED'] },
         },
       },
