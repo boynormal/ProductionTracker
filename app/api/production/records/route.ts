@@ -5,7 +5,12 @@ import { isUserEligibleForPart } from '@/lib/user-part-eligibility'
 import { auditUserIdFromDbUserId } from '@/lib/audit-user'
 import { z } from 'zod'
 import { getCurrentShift, getCurrentHourSlot } from '@/lib/utils/shift'
-import { parseThaiCalendarDateUtc, dayEndExclusiveUTC, parseThaiLocalToUtc } from '@/lib/time-utils'
+import {
+  parseThaiCalendarDateUtc,
+  dayEndExclusiveUTC,
+  parseThaiLocalToUtc,
+  getThaiReportingDateUTC,
+} from '@/lib/time-utils'
 import { checkPermission } from '@/lib/permissions/guard'
 
 const schema = z.object({
@@ -34,6 +39,10 @@ const schema = z.object({
   /** ผู้ลงชื่อในบันทึกรายชั่วโมง — ถ้าไม่ส่ง ใช้ผู้ที่ล็อกอิน/สแกน */
   recordOperatorId: z.string().optional(),
 })
+
+function formatUtcDateKey(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
 
 function normalizeBreakdownEntries(entries: NonNullable<z.infer<typeof schema>['breakdown']>) {
   return entries.map((bd, index) => {
@@ -161,7 +170,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate hour slot is current or previous only
-    const shift = getCurrentShift()
+    const nowMs = Date.now()
+    const shift = getCurrentShift(nowMs)
     const currentSlot = getCurrentHourSlot(shift)
     const allowedMin = Math.max(1, currentSlot - 1)
     if (data.hourSlot < allowedMin || data.hourSlot > currentSlot) {
@@ -173,6 +183,33 @@ export async function POST(req: NextRequest) {
     // Validate session exists
     const prodSession = await prisma.productionSession.findUnique({ where: { id: data.sessionId } })
     if (!prodSession) return NextResponse.json({ error: 'Session ไม่พบ กรุณาสร้าง Session ก่อน' }, { status: 404 })
+
+    if (prodSession.status !== 'IN_PROGRESS') {
+      return NextResponse.json(
+        { error: 'Session นี้ปิดกะแล้วหรือไม่พร้อมบันทึก — กรุณาเปิด Session ใหม่ของกะปัจจุบัน' },
+        { status: 409 },
+      )
+    }
+    if (prodSession.shiftType !== shift) {
+      return NextResponse.json(
+        {
+          error:
+            shift === 'DAY'
+              ? 'กำลังอยู่กะเช้า — ไม่สามารถบันทึกลง Session กะดึกได้'
+              : 'กำลังอยู่กะดึก — ไม่สามารถบันทึกลง Session กะเช้าได้',
+        },
+        { status: 409 },
+      )
+    }
+
+    const currentReportingDate = getThaiReportingDateUTC(nowMs)
+    const sessionReportingDate = prodSession.reportingDate ?? prodSession.sessionDate
+    if (formatUtcDateKey(sessionReportingDate) !== formatUtcDateKey(currentReportingDate)) {
+      return NextResponse.json(
+        { error: 'Session นี้ไม่ใช่รอบวันรายงานปัจจุบัน — กรุณาเริ่ม Session ใหม่ก่อนบันทึก' },
+        { status: 409 },
+      )
+    }
 
     // ตรวจซ้ำ — หนึ่งชั่วโมงต่อ session (ไม่ว่าจะเป็น Part ใด)
     const existing = await prisma.hourlyRecord.findUnique({
