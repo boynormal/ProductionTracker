@@ -75,6 +75,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         { status: 403 },
       )
     }
+
+    const oppositeShift = existing.shiftType === 'NIGHT' ? 'DAY' : 'NIGHT'
+    const conflictingOpenSession = await prisma.productionSession.findFirst({
+      where: {
+        id: { not: existing.id },
+        lineId: existing.lineId,
+        sessionDate: existing.sessionDate,
+        shiftType: oppositeShift,
+        status: 'IN_PROGRESS',
+      },
+      select: { id: true },
+    })
+
+    if (conflictingOpenSession) {
+      return NextResponse.json(
+        {
+          error:
+            oppositeShift === 'NIGHT'
+              ? 'ยังมี Session กะดึกเปิดอยู่ (IN_PROGRESS) — กรุณาปิดกะดึกในระบบก่อนเปิดกะเช้า'
+              : 'ยังมี Session กะเช้าเปิดอยู่ (IN_PROGRESS) — กรุณาปิดกะเช้าในระบบก่อนเปิดหรือบันทึกกะดึก',
+          code: oppositeShift === 'NIGHT' ? 'NIGHT_SESSION_STILL_OPEN' : 'DAY_SESSION_STILL_OPEN',
+        },
+        { status: 409 },
+      )
+    }
   }
 
   const updateData: Record<string, unknown> = {}

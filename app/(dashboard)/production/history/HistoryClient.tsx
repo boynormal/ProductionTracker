@@ -716,22 +716,38 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   ])
 
   /** รายการกะที่ยังเปิด — ใช้แสดงแถบช่วยหาปุ่มปิดกะ */
-  const openShiftBannerLines = useMemo(
-    () =>
-      filteredSessions
-        .filter((s) => s.status === 'IN_PROGRESS')
-        .map((s) => ({
-          id: String(s.id),
-          shiftType: s.shiftType === 'NIGHT' ? 'NIGHT' as const : 'DAY' as const,
-          divisionName:
-            canonicalDivisionName(s.line?.section?.division?.divisionName) ??
-            s.line?.section?.division?.divisionName ??
-            s.line?.section?.division?.divisionCode ??
-            '—',
-          lineCode: String(s.line?.lineCode ?? s.lineId ?? '—'),
-        })),
-    [filteredSessions],
-  )
+  const openShiftBannerLines = useMemo(() => {
+    const deduped = new Map<
+      string,
+      {
+        id: string
+        shiftType: 'DAY' | 'NIGHT'
+        divisionName: string
+        lineCode: string
+      }
+    >()
+    for (const s of filteredSessions) {
+      if (s.status !== 'IN_PROGRESS') continue
+      const shiftType: 'DAY' | 'NIGHT' = s.shiftType === 'NIGHT' ? 'NIGHT' : 'DAY'
+      const lineId = String(s.lineId ?? s.line?.id ?? '')
+      const lineCode = String(s.line?.lineCode ?? s.lineId ?? '—')
+      const key = lineId
+        ? `${lineId}:${shiftType}`
+        : `${lineCode}:${shiftType}`
+      if (deduped.has(key)) continue
+      deduped.set(key, {
+        id: String(s.id),
+        shiftType,
+        divisionName:
+          canonicalDivisionName(s.line?.section?.division?.divisionName) ??
+          s.line?.section?.division?.divisionName ??
+          s.line?.section?.division?.divisionCode ??
+          '—',
+        lineCode,
+      })
+    }
+    return Array.from(deduped.values())
+  }, [filteredSessions])
 
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
