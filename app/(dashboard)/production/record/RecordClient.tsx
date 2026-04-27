@@ -12,6 +12,7 @@ import { SHIFT_CONFIGS, getCurrentShift, getCurrentHourSlot, getSlotStartTime } 
 import {
   getThaiIsoDateTimeLocal,
   getThaiTodayUTC,
+  getShiftSessionDateUTC,
   getThaiReportingDateUTC,
   formatThaiDateUTCISO,
   parseThaiCalendarDateUtc,
@@ -407,13 +408,13 @@ export function RecordClient({
   const displayLineActivityByLineId = useMemo(() => {
     const base = { ...lineActivityMap }
     if (sessionData?.lineId && Array.isArray(sessionData.hourlyRecords) && sessionData.hourlyRecords.length > 0) {
-      const st: 'DAY' | 'NIGHT' = sessionData.shiftType === 'NIGHT' ? 'NIGHT' : 'DAY'
+      const st: 'DAY' | 'NIGHT' =
+        sessionData.shiftType === 'NIGHT' || sessionData.shiftType === 'DAY' ? sessionData.shiftType : liveShift
       const snap = latestSnapshotFromHourlyRecords(sessionData.hourlyRecords, st)
       if (snap) base[sessionData.lineId] = snap
     }
     return base
   }, [lineActivityMap, sessionData])
-
 
   const recordedMap = useMemo(() => {
     const map: Record<number, { okQty: number; hasBreakdown: boolean; hasNg: boolean }> = {}
@@ -606,7 +607,6 @@ export function RecordClient({
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [])
 
-
   const loadInProgressSessionForLine = useCallback(async (lineId: string, signal?: AbortSignal) => {
     if (!lineId) return null
     try {
@@ -630,7 +630,7 @@ export function RecordClient({
       }
 
       const shiftNow = getCurrentShift()
-      const sessionDateStr = formatThaiDateUTCISO(getThaiTodayUTC())
+      const sessionDateStr = formatThaiDateUTCISO(getShiftSessionDateUTC(shiftNow))
       const reportingDateStr = formatThaiDateUTCISO(getThaiReportingDateUTC())
 
       const pinnedSession = existingSessionRef.current

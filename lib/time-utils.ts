@@ -111,6 +111,18 @@ export function getThaiTodayUTC(nowMs: number = Date.now()): Date {
   return new Date(thaiDayMs)
 }
 
+export function getShiftSessionDateUTC(
+  shiftType: ShiftType,
+  nowMs: number = Date.now(),
+): Date {
+  const today = getThaiTodayUTC(nowMs)
+  const hour = getThaiHour(nowMs)
+  if (shiftType === 'NIGHT' && hour < 8) {
+    return new Date(today.getTime() - 24 * 60 * 60 * 1000)
+  }
+  return today
+}
+
 /**
  * Convert an instant to reporting date (Thai business day) using `[08:00, 08:00)` cutoff.
  *

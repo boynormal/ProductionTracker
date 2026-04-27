@@ -3,7 +3,7 @@ import type { UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { getCurrentShift } from '@/lib/utils/shift'
-import { getThaiTodayUTC, getThaiReportingDateUTC, parseThaiPickerDateToUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
+import { getShiftSessionDateUTC, getThaiReportingDateUTC, parseThaiPickerDateToUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { checkPermission } from '@/lib/permissions/guard'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 
@@ -242,9 +242,9 @@ export async function POST(req: NextRequest) {
     // ✅ ใช้เวลา server เป็นแหล่งเดียว แล้วแปลงเป็นปฏิทินไทยอย่าง deterministic
     const startTime = new Date()
     const nowMs = startTime.getTime()
-    const sessionDate = getThaiTodayUTC(nowMs)
-    const reportingDate = getThaiReportingDateUTC(nowMs)
     const shiftType   = getCurrentShift()
+    const sessionDate = getShiftSessionDateUTC(shiftType, nowMs)
+    const reportingDate = getThaiReportingDateUTC(nowMs)
 
     /** ห้ามเปิดสองกะพร้อมในวันเดียวกัน (sessionDate เดียวกัน) — กันข้อมูล hourly ปนกันระหว่างกริดกะ */
     if (shiftType === 'NIGHT') {

@@ -66,7 +66,9 @@ type LineDayNight = {
 }
 
 function inferHistoryDisplayShift(sess: any): 'DAY' | 'NIGHT' {
-  const dbShift: 'DAY' | 'NIGHT' = sess.shiftType === 'NIGHT' ? 'NIGHT' : 'DAY'
+  if (sess?.shiftType === 'DAY' || sess?.shiftType === 'NIGHT') {
+    return sess.shiftType
+  }
   const records = Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords : []
   let dayVotes = 0
   let nightVotes = 0
@@ -76,10 +78,10 @@ function inferHistoryDisplayShift(sess: any): 'DAY' | 'NIGHT' {
     if (isBangkokDayShiftHour(h)) dayVotes++
     else nightVotes++
   }
-  if (dayVotes + nightVotes === 0) return dbShift
+  if (dayVotes + nightVotes === 0) return 'DAY'
   if (dayVotes > nightVotes) return 'DAY'
   if (nightVotes > dayVotes) return 'NIGHT'
-  return dbShift
+  return 'DAY'
 }
 
 function pickBetterSession(existing: any, incoming: any, bucket: 'DAY' | 'NIGHT'): any {
