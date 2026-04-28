@@ -244,21 +244,16 @@ function sessionTotals(sess: any | null) {
   const normalRecords = records.filter((r: any) => (Number(r.hourSlot) || 0) <= normalH)
   const otRecords     = records.filter((r: any) => (Number(r.hourSlot) || 0) > normalH)
 
-  const calcAvg = (recs: any[]) => {
-    const pcts = recs
-      .map((r: any) => {
-        const ok  = Number(r.okQty) || 0
-        const tgt = Number(r.targetQty) || 0
-        return tgt > 0 ? (ok / tgt) * 100 : 0
-      })
-      .filter((p: number) => p > 0)
-    return pcts.length > 0 ? pcts.reduce((s: number, p: number) => s + p, 0) / pcts.length : 0
+  const calcPct = (recs: any[]) => {
+    const ok = recs.reduce((n: number, r: any) => n + (Number(r.okQty) || 0), 0)
+    const tgt = recs.reduce((n: number, r: any) => n + (Number(r.targetQty) || 0), 0)
+    return tgt > 0 ? Math.round((ok / tgt) * 100) : 0
   }
 
-  const avgPctNormal  = calcAvg(normalRecords)
-  const avgPctOt      = calcAvg(otRecords)
+  const avgPctNormal  = calcPct(normalRecords)
+  const avgPctOt      = calcPct(otRecords)
   const allPcts       = [...normalRecords, ...otRecords]
-  const avgPct        = calcAvg(allPcts)
+  const avgPct        = calcPct(allPcts)
 
   const ok  = records.reduce((n: number, r: any) => n + (Number(r.okQty) || 0), 0)
   const tgt = records.reduce((n: number, r: any) => n + (Number(r.targetQty) || 0), 0)
@@ -266,21 +261,19 @@ function sessionTotals(sess: any | null) {
   return {
     ok,
     tgt,
-    avgPct:       Math.round(avgPct),
-    avgPctNormal: Math.round(avgPctNormal),
-    avgPctOt:     Math.round(avgPctOt),
+    avgPct,
+    avgPctNormal,
+    avgPctOt,
     hasBd: records.some((r: any) => r.hasBreakdown),
     hasNg: records.some((r: any) => r.hasNg),
   }
 }
 
-/** % รวมทั้งวันในคอลัมน์ «รวมทั้งวัน» — เฉลี่ยกะที่มีข้อมูล หรือกะเดียว */
+/** % รวมทั้งวันในคอลัมน์ «รวมทั้งวัน» — คำนวณจาก OK รวม / Target รวม ของทั้งสองกะ */
 function avgPctDayTotalColumn(dTot: ReturnType<typeof sessionTotals>, nTot: ReturnType<typeof sessionTotals>) {
-  return dTot.avgPctNormal > 0 && nTot.avgPctNormal > 0
-    ? Math.round((dTot.avgPctNormal + nTot.avgPctNormal) / 2)
-    : dTot.avgPctNormal > 0
-      ? dTot.avgPctNormal
-      : nTot.avgPctNormal
+  const ok = dTot.ok + nTot.ok
+  const tgt = dTot.tgt + nTot.tgt
+  return tgt > 0 ? Math.round((ok / tgt) * 100) : 0
 }
 
 function ShiftHourGrid({
