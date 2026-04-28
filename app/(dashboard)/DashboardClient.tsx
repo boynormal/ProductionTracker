@@ -26,10 +26,6 @@ const fetcher = async (url: string) => {
   return j
 }
 
-function formatHours(hours: number): string {
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(hours)} h`
-}
-
 function formatMinutesToHoursMinutes(totalMinutes: number): string {
   if (totalMinutes <= 0) return ''
   const hours = Math.floor(totalMinutes / 60)
@@ -356,7 +352,6 @@ export function DashboardClient({
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Achievement</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('planned')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
@@ -372,9 +367,8 @@ export function DashboardClient({
                     s + r.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0)
                   const pct   = tgt > 0 ? Math.round((ok / tgt) * 100) : 0
                   const machineLabel = sess.machine?.mcNo ?? (locale === 'th' ? 'ทั้งสาย' : 'Line')
-                  const plannedText = Number.isFinite(sess.totalHours) ? formatHours(sess.totalHours) : ''
                   const recordedHours = Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords.length : 0
-                  const recordedHoursText = recordedHours > 0 ? formatHours(recordedHours) : ''
+                  const recordedHoursText = recordedHours > 0 ? `${recordedHours.toLocaleString()} h` : ''
                   const bdText = formatMinutesToHoursMinutes(bdMin)
                   return (
                     <tr key={sess.id} className="hover:bg-blue-50/30 transition-colors">
@@ -406,13 +400,14 @@ export function DashboardClient({
                         </span>
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
-                        {plannedText}
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
                         {recordedHoursText}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-center">
-                        <span className="font-mono text-slate-600">{bdText}</span>
+                        {bdText ? (
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-600">
+                            {bdText}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-center">
                         {ng > 0
