@@ -1117,7 +1117,7 @@ export function RecordClient({
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pb-28 sm:px-6 sm:pb-10 lg:px-8">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
         <h1 className="text-3xl font-bold text-slate-800 sm:text-4xl">{t('productionRecord')}</h1>
@@ -1203,7 +1203,7 @@ export function RecordClient({
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 pb-10 sm:pb-0">
 
         <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-4 sm:p-5">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-700">
