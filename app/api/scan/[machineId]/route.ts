@@ -21,16 +21,29 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     if (!machine) return NextResponse.json({ error: 'Machine not found' }, { status: 404 })
 
+    const linePartTargets = await prisma.linePartTarget.findMany({
+      where: {
+        lineId: machine.lineId,
+        isActive: true,
+      },
+      select: { partId: true },
+    })
+    const allowedPartIds = new Set(linePartTargets.map((row) => row.partId))
+    const filteredMachine = {
+      ...machine,
+      partTargets: machine.partTargets.filter((target) => allowedPartIds.has(target.partId)),
+    }
+
     await prisma.scanLog.create({
       data: {
-        machineId: machine.id,
+        machineId: filteredMachine.id,
         action: 'OPEN_FORM',
         ipAddress: req.headers.get('x-forwarded-for') ?? 'unknown',
         userAgent: req.headers.get('user-agent') ?? 'unknown',
       },
     })
 
-    return NextResponse.json({ data: machine })
+    return NextResponse.json({ data: filteredMachine })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

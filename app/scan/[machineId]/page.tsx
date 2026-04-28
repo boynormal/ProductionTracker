@@ -170,7 +170,7 @@ export default function ScanPage() {
                   {filteredPartTargets.map((pt: any) => (
                     <a
                       key={pt.id}
-                      href={`/production/record?machineId=${machine.id}&partTargetId=${pt.id}`}
+                      href={`/production/record?machineId=${machine.id}&partId=${pt.partId}`}
                       className="block rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition-all"
                     >
                       <div className="flex items-center justify-between">
