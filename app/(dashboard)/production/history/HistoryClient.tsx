@@ -1013,6 +1013,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT เช้า' : 'Day OT'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT ดึก' : 'Night OT'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>{t('recordedHours')}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>NG</th>
               </tr>
@@ -1031,6 +1032,9 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 const allParts   = [...dayParts, ...nightParts].filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i)
                 const operatorPartSummaries = buildOperatorPartSummaries(day, night)
                 const bdNg = aggregateBreakdownNgForLineDay(day, night)
+                const recordedHours =
+                  (Array.isArray(day?.hourlyRecords) ? day.hourlyRecords.length : 0) +
+                  (Array.isArray(night?.hourlyRecords) ? night.hourlyRecords.length : 0)
 
                 // Org info
                 const section    = line?.section
@@ -1188,6 +1192,16 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                           </span>
                         ) : <span className="text-slate-400 text-xs">—</span>}
                       </td>
+                      {/* Column: ชั่วโมงบันทึก */}
+                      <td className="border border-slate-200 px-3 py-2 text-xs text-center">
+                        {recordedHours > 0 ? (
+                          <span className="font-mono font-semibold text-slate-700">
+                            {recordedHours.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       {/* Column: สรุป Breakdown */}
                       <td className="border border-slate-200 px-3 py-2 text-xs">
                         {bdNg.bdCount > 0 || bdNg.bdMinutes > 0 ? (
@@ -1223,7 +1237,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                     {/* Detail row — รายชั่วโมง (ขยายเมื่อคลิกลูกศร) */}
                     {lineDetailOpen ? (
                     <tr>
-                      <td colSpan={9} className="border-x border-slate-200 bg-white p-0">
+                      <td colSpan={10} className="border-x border-slate-200 bg-white p-0">
                         <div className="grid grid-cols-12 border-b border-slate-200">
                           {/* Info panel */}
                           <div className="col-span-2 border-r border-slate-200 p-3 bg-slate-50/50">

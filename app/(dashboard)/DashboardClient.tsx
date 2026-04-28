@@ -26,6 +26,17 @@ const fetcher = async (url: string) => {
   return j
 }
 
+function formatHours(hours: number): string {
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(hours)} h`
+}
+
+function formatMinutesToHoursMinutes(totalMinutes: number): string {
+  if (totalMinutes <= 0) return ''
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return `${hours}:${String(minutes).padStart(2, '0')}`
+}
+
 interface Props {
   initialData: {
     mode: 'day' | 'month'
@@ -345,7 +356,9 @@ export function DashboardClient({
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Achievement</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>BD</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('planned')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
                 </tr>
               </thead>
@@ -355,9 +368,14 @@ export function DashboardClient({
                   const tgt   = sess.hourlyRecords.reduce((s: number, r: any) => s + r.targetQty, 0)
                   const ng    = sess.hourlyRecords.reduce((s: number, r: any) =>
                     s + r.ngLogs.reduce((n: number, ng: any) => n + ng.ngQty, 0), 0)
-                  const hasBd = sess.hourlyRecords.some((r: any) => r.hasBreakdown)
+                  const bdMin = sess.hourlyRecords.reduce((s: number, r: any) =>
+                    s + r.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0)
                   const pct   = tgt > 0 ? Math.round((ok / tgt) * 100) : 0
                   const machineLabel = sess.machine?.mcNo ?? (locale === 'th' ? 'ทั้งสาย' : 'Line')
+                  const plannedText = Number.isFinite(sess.totalHours) ? formatHours(sess.totalHours) : ''
+                  const recordedHours = Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords.length : 0
+                  const recordedHoursText = recordedHours > 0 ? formatHours(recordedHours) : ''
+                  const bdText = formatMinutesToHoursMinutes(bdMin)
                   return (
                     <tr key={sess.id} className="hover:bg-blue-50/30 transition-colors">
                       {mode === 'month' ? (
@@ -387,10 +405,14 @@ export function DashboardClient({
                           {pct}%
                         </span>
                       </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
+                        {plannedText}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
+                        {recordedHoursText}
+                      </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-center">
-                        {hasBd
-                          ? <span className="inline-flex h-5 w-8 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600">BD</span>
-                          : <span className="text-slate-200 text-xs">—</span>}
+                        <span className="font-mono text-slate-600">{bdText}</span>
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-center">
                         {ng > 0
