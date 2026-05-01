@@ -5,8 +5,9 @@ import Link from 'next/link'
 import useSWR from 'swr'
 import { useI18n } from '@/lib/i18n'
 import { calcOEE, calcAvailability, calcPerformance, calcQuality, getOeeBg } from '@/lib/utils/oee'
+import { aggregateDashboardCyclePerformancePct } from '@/lib/utils/oee-cycle-performance'
 import {
-  Activity, Cpu, AlertTriangle, CheckCircle2, Wrench, Clock,
+  Activity, Cpu, AlertTriangle, CheckCircle2,
   TrendingUp, XCircle, Plus, History, FileBarChart, CalendarDays,
   ChevronRight, RefreshCw,
 } from 'lucide-react'
@@ -112,20 +113,18 @@ export function DashboardClient({
   const totalBd  = sessions.reduce((s: number, sess: any) =>
     s + sess.hourlyRecords.reduce((r: number, hr: any) =>
       r + hr.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0), 0)
-  const totalFailures = sessions.reduce((s: number, sess: any) =>
-    s + sess.hourlyRecords.reduce((r: number, hr: any) => r + hr.breakdownLogs.length, 0), 0)
   const totalTarget = sessions.reduce((s: number, sess: any) =>
     s + sess.hourlyRecords.reduce((r: number, hr: any) => r + hr.targetQty, 0), 0)
   const totalHours  = sessions.reduce((s: number, sess: any) => s + sess.totalHours, 0)
-  const totalDowntimeHr = totalBd / 60
-  const totalUptimeHr = Math.max(0, totalHours - totalDowntimeHr)
 
   const avail  = calcAvailability(totalHours * 60, totalBd)
-  const perf   = calcPerformance(totalOk, totalTarget)
+  const perf   =
+    sessions.length > 0 &&
+    sessions.every((sess: any) => typeof sess.dashboardCycleIdealMinutes === 'number')
+      ? aggregateDashboardCyclePerformancePct(sessions)
+      : calcPerformance(totalOk, totalTarget)
   const qual   = calcQuality(totalOk, totalNg)
   const oee    = calcOEE(avail, perf, qual)
-  const mtbf   = totalFailures > 0 ? Math.round((totalUptimeHr / totalFailures) * 100) / 100 : Math.round(totalHours * 100) / 100
-  const mttr   = totalFailures > 0 ? Math.round((totalDowntimeHr / totalFailures) * 100) / 100 : 0
 
   const unread = unreadAlertsCount
   const divisionLabel = divisionId
@@ -275,7 +274,7 @@ export function DashboardClient({
         <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
           {locale === 'th' ? 'สรุปการผลิต' : 'Production Summary'}
         </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <MetricCard
             label={locale === 'th' ? 'Session ที่รัน' : 'Active Sessions'}
             value={activeSessions}
@@ -291,16 +290,6 @@ export function DashboardClient({
             value={totalNg.toLocaleString()}
             sub={locale === 'th' ? 'ชิ้น NG' : 'pcs NG'}
             icon={<XCircle size={18} />} accent="red" />
-          <MetricCard
-            label="MTBF"
-            value={mtbf.toFixed(2)}
-            sub={locale === 'th' ? 'ชม./เหตุเสีย' : 'hrs / failure'}
-            icon={<Clock size={18} />} accent="indigo" />
-          <MetricCard
-            label="MTTR"
-            value={mttr.toFixed(2)}
-            sub={locale === 'th' ? 'ชม.ซ่อมเฉลี่ย' : 'avg repair hrs'}
-            icon={<Wrench size={18} />} accent="amber" />
           <Link href="/alerts" className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 rounded-2xl">
             <MetricCard
               label={locale === 'th' ? 'แจ้งเตือน' : 'Alerts'}
@@ -351,7 +340,13 @@ export function DashboardClient({
                   <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t('line')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Achievement</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>
+                    {locale === 'th' ? 'ความพร้อมใช้งาน' : 'Achievement'}
+                  </th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('oee')}>OEE</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('availability')}>A</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('performance')}>P</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('quality')}>Q</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
@@ -366,6 +361,14 @@ export function DashboardClient({
                   const bdMin = sess.hourlyRecords.reduce((s: number, r: any) =>
                     s + r.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0)
                   const pct   = tgt > 0 ? Math.round((ok / tgt) * 100) : 0
+                  const totalSessionMin = Number(sess.totalHours ?? 0) * 60
+                  const rowA = calcAvailability(totalSessionMin, bdMin)
+                  const rowP =
+                    typeof sess.dashboardPerformancePct === 'number'
+                      ? sess.dashboardPerformancePct
+                      : calcPerformance(ok, tgt)
+                  const rowQ = calcQuality(ok, ng)
+                  const rowOee = calcOEE(rowA, rowP, rowQ)
                   const machineLabel = sess.machine?.mcNo ?? (locale === 'th' ? 'ทั้งสาย' : 'Line')
                   const recordedHours = Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords.length : 0
                   const recordedHoursText = recordedHours > 0 ? `${recordedHours.toLocaleString()} h` : ''
@@ -397,6 +400,26 @@ export function DashboardClient({
                                        'bg-red-100 text-red-600'
                         )}>
                           {pct}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowOee))}>
+                          {rowOee}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowA))}>
+                          {rowA}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowP))}>
+                          {rowP}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowQ))}>
+                          {rowQ}%
                         </span>
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">

@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { dayEndExclusiveUTC, getThaiTodayUTC, parseThaiCalendarDateUtc } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
+import { enrichSessionsWithCyclePerformance } from '@/lib/production/enrich-dashboard-sessions'
 
 type Mode = 'day' | 'month'
 const WITH_LEGACY_SESSION_DATE_FALLBACK = false
@@ -117,13 +118,15 @@ export async function GET(req: NextRequest) {
     }),
   ])
 
+  const sessionsEnriched = await enrichSessionsWithCyclePerformance(sessions)
+
   return NextResponse.json({
     mode,
     from: from.toISOString().slice(0, 10),
     to: new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     divisionId: divisionIdParam || null,
     sectionId: sectionIdParam || null,
-    sessions,
+    sessions: sessionsEnriched,
     activeSessions,
     unreadAlertsCount,
     totalMachines,

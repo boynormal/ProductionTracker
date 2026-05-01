@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
 
   const data = Array.from(grouped.entries()).map(([lineId, g]) => {
     const availability = calcAvailability(g.totalHours * 60, g.bdMin)
-    const performance  = calcPerformance(g.okQty, g.targetQty)
+    const performance  = calcPerformance(g.okQty + g.ngQty, g.targetQty)
     const quality      = calcQuality(g.okQty, g.ngQty)
     const oee          = calcOEE(availability, performance, quality)
     return { lineId, ...g, availability, performance, quality, oee }

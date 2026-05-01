@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
     .map((m) => {
       const plannedMin = m.slotCount * 60
       const availability = calcAvailability(plannedMin, m.bdMin)
-      const performance = calcPerformance(m.okQty, m.targetQty)
+      const performance = calcPerformance(m.okQty + m.ngQty, m.targetQty)
       const quality = calcQuality(m.okQty, m.ngQty)
       const oee = calcOEE(availability, performance, quality)
       return {
@@ -274,7 +274,7 @@ export async function GET(req: NextRequest) {
     .map((l) => {
       const plannedMin = l.slotCount * 60
       const availability = calcAvailability(plannedMin, l.bdMin)
-      const performance = calcPerformance(l.okQty, l.targetQty)
+      const performance = calcPerformance(l.okQty + l.ngQty, l.targetQty)
       const quality = calcQuality(l.okQty, l.ngQty)
       const oee = calcOEE(availability, performance, quality)
       return {

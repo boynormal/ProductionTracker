@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getThaiTodayUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
+import { enrichSessionsWithCyclePerformance } from '@/lib/production/enrich-dashboard-sessions'
 import { DashboardClient } from './DashboardLoader'
 
 export default async function DashboardPage() {
@@ -56,6 +57,8 @@ export default async function DashboardPage() {
     }),
   ])
 
+  const machinesEnriched = await enrichSessionsWithCyclePerformance(machines)
+
   return (
     <DashboardClient
       initialData={JSON.parse(JSON.stringify({
@@ -64,7 +67,7 @@ export default async function DashboardPage() {
         to: todayIso,
         divisionId: null,
         sectionId: null,
-        sessions: machines,
+        sessions: machinesEnriched,
         activeSessions,
         unreadAlertsCount,
         totalMachines,
