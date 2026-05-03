@@ -40,7 +40,7 @@ export function LoginClient() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 p-4">
+    <div className="min-h-screen flex items-center justify-center page-bg p-4">
       <div className="w-full max-w-sm">
         {/* Logo Card */}
         <div className="mb-8 text-center">

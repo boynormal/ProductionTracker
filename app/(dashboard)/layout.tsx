@@ -100,7 +100,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     const displayName = `${scanUser.firstName} ${scanUser.lastName}`
 
     return (
-      <div className="flex min-h-screen flex-col bg-slate-50">
+      <div className="flex min-h-screen flex-col bg-transparent">
         <ScanOperatorBar displayName={displayName} employeeCode={scanUser.employeeCode} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           {children}
@@ -112,7 +112,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   /** QR สาย: ยังไม่มี cookie — เปิดหน้ากรอกรหัสพนักงาน (ไม่ redirect /login) */
   if (allowLineQr) {
     return (
-      <div className="flex min-h-screen flex-col bg-slate-50">
+      <div className="flex min-h-screen flex-col bg-transparent">
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     )

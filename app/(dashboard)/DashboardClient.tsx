@@ -179,7 +179,7 @@ export function DashboardClient({
               </span>
             )}
             {isLoading && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-500">
                 <RefreshCw size={9} className="animate-spin" />
                 {locale === 'th' ? 'โหลด...' : 'Loading...'}
               </span>
@@ -188,7 +188,7 @@ export function DashboardClient({
         </div>
         <div className="shrink-0 rounded-2xl border border-slate-100 bg-white px-5 py-3 text-right shadow-sm">
           <p className="font-mono text-3xl font-bold tabular-nums text-slate-700">{format(now, 'HH:mm')}</p>
-          <p className="text-[11px] text-slate-400">{locale === 'th' ? 'อัพเดทล่าสุด' : 'Last updated'}</p>
+          <p className="text-[11px] text-slate-500">{locale === 'th' ? 'อัพเดทล่าสุด' : 'Last updated'}</p>
         </div>
       </div>
 
@@ -210,17 +210,17 @@ export function DashboardClient({
                 </button>
               </div>
             </FilterField>
-            <FilterField label={mode === 'day' ? (locale === 'th' ? 'วันที่' : 'Date') : (locale === 'th' ? 'เดือน' : 'Month')}>
+            <FilterField label={mode === 'day' ? (locale === 'th' ? 'วันที่' : 'Date') : (locale === 'th' ? 'เดือน' : 'Month')} htmlFor="filter-period">
               {mode === 'day' ? (
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+                <input id="filter-period" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
                   className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
               ) : (
-                <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}
+                <input id="filter-period" type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}
                   className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
               )}
             </FilterField>
-            <FilterField label={locale === 'th' ? 'ฝ่าย' : 'Division'}>
-              <select value={divisionId} onChange={(e) => setDivisionId(e.target.value)}
+            <FilterField label={locale === 'th' ? 'ฝ่าย' : 'Division'} htmlFor="filter-division">
+              <select id="filter-division" value={divisionId} onChange={(e) => setDivisionId(e.target.value)}
                 className="h-9 min-w-[11rem] rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                 <option value="">{locale === 'th' ? 'ทั้งหมด' : 'All'}</option>
                 {divisions.map((d) => (
@@ -228,8 +228,8 @@ export function DashboardClient({
                 ))}
               </select>
             </FilterField>
-            <FilterField label={locale === 'th' ? 'ส่วน' : 'Section'}>
-              <select value={sectionId} onChange={(e) => setSectionId(e.target.value)}
+            <FilterField label={locale === 'th' ? 'ส่วน' : 'Section'} htmlFor="filter-section">
+              <select id="filter-section" value={sectionId} onChange={(e) => setSectionId(e.target.value)}
                 className="h-9 min-w-[10rem] rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                 <option value="">{locale === 'th' ? 'ทั้งหมด' : 'All'}</option>
                 {filteredSections.map((s) => (
@@ -261,7 +261,7 @@ export function DashboardClient({
 
       {/* ── OEE KPI CARDS ── */}
       <section>
-        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">OEE Performance</p>
+        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">OEE Performance</p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {kpiCards.map((k) => (
             <KpiCard key={k.label} label={k.label} value={k.value} color={k.color} icon={k.icon} />
@@ -271,7 +271,7 @@ export function DashboardClient({
 
       {/* ── PRODUCTION SUMMARY CARDS ── */}
       <section>
-        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">
           {locale === 'th' ? 'สรุปการผลิต' : 'Production Summary'}
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -309,7 +309,7 @@ export function DashboardClient({
                 ? (locale === 'th' ? 'รายการ Session วันที่เลือก' : 'Sessions — Selected Date')
                 : (locale === 'th' ? 'รายการ Session เดือนที่เลือก' : 'Sessions — Selected Month')}
             </h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">{periodText}{filterDivisionText}{filterSectionText}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">{periodText}{filterDivisionText}{filterSectionText}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-700">
@@ -326,7 +326,7 @@ export function DashboardClient({
         {sessions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <Cpu size={36} className="mb-3 text-slate-200" />
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-500">
               {locale === 'th' ? 'ไม่มี Session ในช่วง/ตัวกรองที่เลือก' : 'No sessions for the selected period'}
             </p>
           </div>
@@ -376,7 +376,7 @@ export function DashboardClient({
                   return (
                     <tr key={sess.id} className="hover:bg-blue-50/30 transition-colors">
                       {mode === 'month' ? (
-                        <td className="border-b border-slate-100 px-4 py-3 font-mono text-xs text-slate-400">
+                        <td className="border-b border-slate-100 px-4 py-3 font-mono text-xs text-slate-500">
                           {String(sess.reportingDate ?? sess.sessionDate).slice(0, 10)}
                         </td>
                       ) : null}
@@ -389,7 +389,7 @@ export function DashboardClient({
                       <td className="border-b border-slate-100 px-4 py-3 text-right font-mono font-semibold text-slate-800">
                         {ok.toLocaleString()}
                       </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-400">
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
                         {tgt.toLocaleString()}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right">
@@ -450,10 +450,15 @@ export function DashboardClient({
   )
 }
 
-function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+function FilterField({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <label
+        htmlFor={htmlFor}
+        className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+      >
+        {label}
+      </label>
       {children}
     </div>
   )
@@ -468,7 +473,7 @@ function KpiCard({ label, value, color, icon }: {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{label}</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{label}</p>
         <div className={cn('rounded-xl p-2', color)}>{icon}</div>
       </div>
       <p className={cn('text-4xl font-black tracking-tight leading-none', textCls)}>{value}</p>
@@ -509,7 +514,7 @@ function MetricCard({ label, value, sub, icon, accent, clickable }: {
       </div>
       <p className="text-2xl font-bold leading-none text-slate-800">{value}</p>
       <p className="mt-1 text-xs font-semibold text-slate-600">{label}</p>
-      <p className="mt-0.5 text-[11px] text-slate-400">{sub}</p>
+      <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p>
     </div>
   )
 }

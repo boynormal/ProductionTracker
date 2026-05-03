@@ -33,6 +33,7 @@ export function Header({ userName, userRole, alertBadgeCount = 0 }: HeaderProps)
         {/* Notification bell — จอใหญ่: ลิงก์ตรง; มือถือมีใน bottom nav แล้ว แต่คงไว้ให้สอดคล้อง */}
         <Link
           href="/alerts"
+          aria-label={`Alerts${alertBadgeCount > 0 ? ` (${alertBadgeCount} unread)` : ''}`}
           className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 transition-colors"
         >
           <Bell size={18} />
@@ -50,7 +51,7 @@ export function Header({ userName, userRole, alertBadgeCount = 0 }: HeaderProps)
           </div>
           <div className="hidden sm:block">
             <p className="text-xs font-medium text-slate-800 leading-none">{userName ?? '-'}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{userRole ?? ''}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">{userRole ?? ''}</p>
           </div>
         </div>
 

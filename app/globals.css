@@ -5,7 +5,7 @@
 @layer base {
   :root {
     /* Industrial Blue Theme */
-    --background: 210 40% 98%;
+    --background: 220 30% 97%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
@@ -62,7 +62,28 @@
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; }
+  body {
+    @apply text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background: linear-gradient(135deg,
+      hsl(220, 60%, 96%) 0%,
+      hsl(240, 50%, 97%) 20%,
+      hsl(260, 40%, 97%) 40%,
+      hsl(30, 50%, 96%) 70%,
+      hsl(25, 60%, 95%) 100%
+    );
+    background-attachment: fixed;
+  }
+}
+
+/* Login page — restore classic deep blue background */
+.page-bg {
+  background: linear-gradient(135deg,
+    hsl(226, 64%, 35%) 0%,
+    hsl(223, 67%, 42%) 50%,
+    hsl(221, 72%, 48%) 100%
+  ) !important;
+  background-attachment: fixed !important;
 }
 
 /* Sidebar */
