@@ -5,7 +5,6 @@ import Link from 'next/link'
 import useSWR from 'swr'
 import { useI18n } from '@/lib/i18n'
 import { calcOEE, calcAvailability, calcPerformance, calcQuality, getOeeBg } from '@/lib/utils/oee'
-import { aggregateDashboardCyclePerformancePct } from '@/lib/utils/oee-cycle-performance'
 import {
   Activity, Cpu, AlertTriangle, CheckCircle2,
   TrendingUp, XCircle, Plus, History, FileBarChart, CalendarDays,
@@ -104,27 +103,40 @@ export function DashboardClient({
   const unreadAlertsCount = data?.unreadAlertsCount ?? 0
   const totalMachines = data?.totalMachines ?? 0
 
-  // สรุปภาพรวม
-  const totalOk  = sessions.reduce((s: number, sess: any) =>
+  // ยอดรวม OK/NG สำหรับแสดงใน MetricCard
+  const totalOk = sessions.reduce((s: number, sess: any) =>
     s + sess.hourlyRecords.reduce((r: number, hr: any) => r + hr.okQty, 0), 0)
-  const totalNg  = sessions.reduce((s: number, sess: any) =>
+  const totalNg = sessions.reduce((s: number, sess: any) =>
     s + sess.hourlyRecords.reduce((r: number, hr: any) =>
       r + hr.ngLogs.reduce((n: number, ng: any) => n + ng.ngQty, 0), 0), 0)
-  const totalBd  = sessions.reduce((s: number, sess: any) =>
-    s + sess.hourlyRecords.reduce((r: number, hr: any) =>
-      r + hr.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0), 0)
-  const totalTarget = sessions.reduce((s: number, sess: any) =>
-    s + sess.hourlyRecords.reduce((r: number, hr: any) => r + hr.targetQty, 0), 0)
-  const totalHours  = sessions.reduce((s: number, sess: any) => s + sess.totalHours, 0)
 
-  const avail  = calcAvailability(totalHours * 60, totalBd)
-  const perf   =
-    sessions.length > 0 &&
-    sessions.every((sess: any) => typeof sess.dashboardCycleIdealMinutes === 'number')
-      ? aggregateDashboardCyclePerformancePct(sessions)
-      : calcPerformance(totalOk, totalTarget)
-  const qual   = calcQuality(totalOk, totalNg)
-  const oee    = calcOEE(avail, perf, qual)
+  // KPI Cards — simple average ของแต่ละ session (สอดคล้องกับ AVG row ในตาราง)
+  const sessionKpis = sessions.map((sess: any) => {
+    const ok    = sess.hourlyRecords.reduce((s: number, r: any) => s + r.okQty, 0)
+    const ng    = sess.hourlyRecords.reduce((s: number, r: any) =>
+      s + r.ngLogs.reduce((n: number, log: any) => n + log.ngQty, 0), 0)
+    const bdMin = sess.hourlyRecords.reduce((s: number, r: any) =>
+      s + r.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0)
+    const tgt   = sess.hourlyRecords.reduce((s: number, r: any) => s + r.targetQty, 0)
+    const totalSessionMin = Number(sess.totalHours ?? 0) * 60
+    const rowA = calcAvailability(totalSessionMin, bdMin)
+    const rowP = typeof sess.dashboardPerformancePct === 'number'
+      ? sess.dashboardPerformancePct
+      : calcPerformance(ok, tgt)
+    const rowQ = calcQuality(ok, ng)
+    const rowOee = calcOEE(rowA, rowP, rowQ)
+    return { rowA, rowP, rowQ, rowOee }
+  })
+
+  type SessionKpi = { rowA: number; rowP: number; rowQ: number; rowOee: number }
+  const n = sessionKpis.length
+  const avg = (key: keyof SessionKpi) =>
+    n > 0 ? Math.floor(sessionKpis.reduce((s: number, k: SessionKpi) => s + k[key], 0) / n * 100) / 100 : 0
+
+  const avail = avg('rowA')
+  const perf  = avg('rowP')
+  const qual  = avg('rowQ')
+  const oee   = avg('rowOee')
 
   const unread = unreadAlertsCount
   const divisionLabel = divisionId
