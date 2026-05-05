@@ -8,7 +8,7 @@ import { calcOEE, calcAvailability, calcPerformance, calcQuality, getOeeBg } fro
 import {
   Activity, Cpu, AlertTriangle, CheckCircle2,
   TrendingUp, XCircle, Plus, History, FileBarChart, CalendarDays,
-  ChevronRight, RefreshCw,
+  ChevronRight, ChevronDown, RefreshCw,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -67,6 +67,7 @@ export function DashboardClient({
   const [selectedMonth, setSelectedMonth] = useState(initialMonth)
   const [divisionId, setDivisionId] = useState(initialData.divisionId ?? '')
   const [sectionId, setSectionId] = useState(initialData.sectionId ?? '')
+  const [showSessions, setShowSessions] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
@@ -137,6 +138,63 @@ export function DashboardClient({
   const perf  = avg('rowP')
   const qual  = avg('rowQ')
   const oee   = avg('rowOee')
+
+  // ── สรุปตามสายการผลิต (aggregate client-side) ─────────────────────────────
+  const lineSummaries = useMemo(() => {
+    type LineAgg = {
+      lineId: string
+      lineCode: string
+      machineIds: Set<string>
+      sessionCount: number
+      totalOk: number
+      totalNg: number
+      totalTarget: number
+      totalBdMin: number
+      totalHours: number
+      totalRecordedHours: number
+    }
+    const map = new Map<string, LineAgg>()
+
+    for (const sess of sessions) {
+      const lineId = sess.lineId as string
+      if (!map.has(lineId)) {
+        map.set(lineId, {
+          lineId,
+          lineCode: sess.line?.lineCode ?? '—',
+          machineIds: new Set(),
+          sessionCount: 0,
+          totalOk: 0, totalNg: 0, totalTarget: 0,
+          totalBdMin: 0, totalHours: 0, totalRecordedHours: 0,
+        })
+      }
+      const g = map.get(lineId)!
+      if (sess.machineId) g.machineIds.add(sess.machineId as string)
+      g.sessionCount++
+      g.totalHours += Number(sess.totalHours ?? 0)
+      g.totalRecordedHours += Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords.length : 0
+      for (const rec of (sess.hourlyRecords ?? []) as any[]) {
+        g.totalOk += rec.okQty
+        g.totalTarget += rec.targetQty
+        for (const bd of (rec.breakdownLogs ?? []) as any[]) g.totalBdMin += bd.breakTimeMin
+        for (const ng of (rec.ngLogs ?? []) as any[]) g.totalNg += ng.ngQty
+      }
+    }
+
+    return Array.from(map.values())
+      .map((g) => {
+        const lA = calcAvailability(g.totalHours * 60, g.totalBdMin)
+        const lP = calcPerformance(g.totalOk, g.totalTarget)
+        const lQ = calcQuality(g.totalOk, g.totalNg)
+        const lOee = calcOEE(lA, lP, lQ)
+        const pct = g.totalTarget > 0 ? Math.round((g.totalOk / g.totalTarget) * 100) : 0
+        return {
+          ...g,
+          machineCount: g.machineIds.size,
+          lA, lP, lQ, lOee, pct,
+        }
+      })
+      .sort((a, b) => a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' }))
+  }, [sessions])
 
   const unread = unreadAlertsCount
   const divisionLabel = divisionId
@@ -312,9 +370,133 @@ export function DashboardClient({
         </div>
       </section>
 
-      {/* ── SESSIONS TABLE ── */}
+      {/* ── LINE SUMMARY TABLE ── */}
       <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700">
+              {locale === 'th' ? 'สรุปตามสายการผลิต' : 'Line Production Summary'}
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">{periodText}{filterDivisionText}{filterSectionText}</p>
+          </div>
+          <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+            {lineSummaries.length} {locale === 'th' ? 'สาย' : 'lines'}
+          </span>
+        </div>
+
+        {lineSummaries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Cpu size={36} className="mb-3 text-slate-200" />
+            <p className="text-sm text-slate-500">
+              {locale === 'th' ? 'ไม่มีข้อมูลในช่วง/ตัวกรองที่เลือก' : 'No data for the selected period'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={DASHBOARD_TABLE_BASE}>
+              <thead className={DASHBOARD_THEAD_STICKY}>
+                <tr>
+                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'สาย' : 'Line'}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'เครื่อง' : 'Machines'}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Session</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>
+                    {locale === 'th' ? 'ความพร้อมใช้งาน' : 'Achievement'}
+                  </th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('oee')}>OEE</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('availability')}>A</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('performance')}>P</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('quality')}>Q</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineSummaries.map((line) => {
+                  const bdText = formatMinutesToHoursMinutes(line.totalBdMin)
+                  const recordedHoursText = line.totalRecordedHours > 0 ? `${line.totalRecordedHours} h` : ''
+                  return (
+                    <tr key={line.lineId} className="hover:bg-indigo-50/30 transition-colors">
+                      <td className="border-b border-slate-100 px-4 py-3">
+                        <span className="rounded-md bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
+                          {line.lineCode}
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
+                        {line.machineCount}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
+                        {line.sessionCount}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono font-semibold text-slate-800">
+                        {line.totalOk.toLocaleString()}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
+                        {line.totalTarget.toLocaleString()}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn(
+                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold',
+                          line.pct >= 100 ? 'bg-emerald-100 text-emerald-700' :
+                          line.pct >= 85  ? 'bg-amber-100 text-amber-700' :
+                                            'bg-red-100 text-red-600'
+                        )}>
+                          {line.pct}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(line.lOee))}>
+                          {line.lOee}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(line.lA))}>
+                          {line.lA}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(line.lP))}>
+                          {line.lP}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(line.lQ))}>
+                          {line.lQ}%
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
+                        {recordedHoursText}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-center">
+                        {bdText ? (
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-600">
+                            {bdText}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-center">
+                        {line.totalNg > 0
+                          ? <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-orange-100 px-1.5 text-xs font-bold text-orange-600">{line.totalNg}</span>
+                          : <span className="text-slate-200 text-xs">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── SESSIONS TABLE ── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowSessions((v) => !v)}
+          className="flex w-full items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5 text-left hover:bg-slate-100/60 transition-colors"
+        >
           <div>
             <h2 className="text-sm font-semibold text-slate-700">
               {mode === 'day'
@@ -327,22 +509,29 @@ export function DashboardClient({
             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-700">
               {sessions.length} {locale === 'th' ? 'รายการ' : 'sessions'}
             </span>
-            <Link href="/production/history"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors">
+            <Link
+              href="/production/history"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors"
+            >
               {locale === 'th' ? 'ดูทั้งหมด' : 'View all'}
               <ChevronRight size={12} />
             </Link>
+            <ChevronDown
+              size={16}
+              className={cn('text-slate-400 transition-transform duration-200', showSessions && 'rotate-180')}
+            />
           </div>
-        </div>
+        </button>
 
-        {sessions.length === 0 ? (
+        {showSessions && sessions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <Cpu size={36} className="mb-3 text-slate-200" />
             <p className="text-sm text-slate-500">
               {locale === 'th' ? 'ไม่มี Session ในช่วง/ตัวกรองที่เลือก' : 'No sessions for the selected period'}
             </p>
           </div>
-        ) : (
+        ) : showSessions ? (
           <div className="overflow-x-auto">
             <table className={DASHBOARD_TABLE_BASE}>
               <thead className={DASHBOARD_THEAD_STICKY}>
@@ -455,7 +644,7 @@ export function DashboardClient({
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </section>
 
     </div>
