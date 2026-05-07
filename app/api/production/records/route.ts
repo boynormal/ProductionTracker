@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { isUserEligibleForPart } from '@/lib/user-part-eligibility'
@@ -42,6 +43,10 @@ const schema = z.object({
 
 function formatUtcDateKey(d: Date): string {
   return d.toISOString().slice(0, 10)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Internal server error'
 }
 
 function normalizeBreakdownEntries(entries: NonNullable<z.infer<typeof schema>['breakdown']>) {
@@ -94,7 +99,7 @@ export async function GET(req: NextRequest) {
   const page      = parseInt(searchParams.get('page') ?? '1')
   const limit     = parseInt(searchParams.get('limit') ?? '20')
 
-  const where: any = {}
+  const where: Prisma.HourlyRecordWhereInput = {}
   if (sessionId) where.sessionId = sessionId
   if (date) {
     const dayStart = parseThaiCalendarDateUtc(date)
@@ -352,8 +357,8 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ data: record }, { status: 201 })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('POST /api/production/records error:', e)
-    return NextResponse.json({ error: e.message ?? 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(e) }, { status: 500 })
   }
 }
