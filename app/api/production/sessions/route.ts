@@ -149,15 +149,13 @@ export async function POST(req: NextRequest) {
     })
     if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (operatorCtx.source === 'nextauth') {
-      const canWrite = await checkPermission({
-        userId: operatorId,
-        role: dbUser.role,
-        permissionKey: 'api.production.session.write',
-        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
-      })
-      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const canWrite = await checkPermission({
+      userId: operatorId,
+      role: dbUser.role,
+      permissionKey: 'api.production.session.write',
+      context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
+    })
+    if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json()
 

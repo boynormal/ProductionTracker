@@ -136,20 +136,18 @@ export async function POST(req: NextRequest) {
     if (!operatorCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const operatorId = operatorCtx.operatorId
 
-    if (operatorCtx.source === 'nextauth') {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: operatorId },
-        select: { role: true, sectionId: true },
-      })
-      if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      const canWrite = await checkPermission({
-        userId: operatorId,
-        role: dbUser.role,
-        permissionKey: 'api.production.record.write',
-        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
-      })
-      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const dbUser = await prisma.user.findUnique({
+      where: { id: operatorId },
+      select: { role: true, sectionId: true },
+    })
+    if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const canWrite = await checkPermission({
+      userId: operatorId,
+      role: dbUser.role,
+      permissionKey: 'api.production.record.write',
+      context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
+    })
+    if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body   = await req.json()
     const parsed = schema.safeParse(body)
@@ -157,7 +155,15 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data
 
-    const recordOperatorId = (data.recordOperatorId?.trim() || operatorId) as string
+    const requestedRecordOperatorId = data.recordOperatorId?.trim()
+    if (requestedRecordOperatorId && requestedRecordOperatorId !== operatorId) {
+      return NextResponse.json(
+        { error: 'ผู้ลงชื่อในบันทึกต้องตรงกับผู้ที่ยืนยันตัวตน' },
+        { status: 403 },
+      )
+    }
+
+    const recordOperatorId = (requestedRecordOperatorId || operatorId) as string
     if (!recordOperatorId) {
       return NextResponse.json({ error: 'ไม่พบผู้ลงชื่อ — เลือกผู้บันทึกหรือล็อกอินใหม่' }, { status: 401 })
     }
