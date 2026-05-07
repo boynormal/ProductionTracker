@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { isUserEligibleForPart } from '@/lib/user-part-eligibility'
@@ -42,6 +43,10 @@ const schema = z.object({
 
 function formatUtcDateKey(d: Date): string {
   return d.toISOString().slice(0, 10)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Internal server error'
 }
 
 function normalizeBreakdownEntries(entries: NonNullable<z.infer<typeof schema>['breakdown']>) {
@@ -94,7 +99,7 @@ export async function GET(req: NextRequest) {
   const page      = parseInt(searchParams.get('page') ?? '1')
   const limit     = parseInt(searchParams.get('limit') ?? '20')
 
-  const where: any = {}
+  const where: Prisma.HourlyRecordWhereInput = {}
   if (sessionId) where.sessionId = sessionId
   if (date) {
     const dayStart = parseThaiCalendarDateUtc(date)
@@ -136,20 +141,18 @@ export async function POST(req: NextRequest) {
     if (!operatorCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const operatorId = operatorCtx.operatorId
 
-    if (operatorCtx.source === 'nextauth') {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: operatorId },
-        select: { role: true, sectionId: true },
-      })
-      if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      const canWrite = await checkPermission({
-        userId: operatorId,
-        role: dbUser.role,
-        permissionKey: 'api.production.record.write',
-        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
-      })
-      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const dbUser = await prisma.user.findUnique({
+      where: { id: operatorId },
+      select: { role: true, sectionId: true },
+    })
+    if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const canWrite = await checkPermission({
+      userId: operatorId,
+      role: dbUser.role,
+      permissionKey: 'api.production.record.write',
+      context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
+    })
+    if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body   = await req.json()
     const parsed = schema.safeParse(body)
@@ -157,7 +160,15 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data
 
-    const recordOperatorId = (data.recordOperatorId?.trim() || operatorId) as string
+    const requestedRecordOperatorId = data.recordOperatorId?.trim()
+    if (requestedRecordOperatorId && requestedRecordOperatorId !== operatorId) {
+      return NextResponse.json(
+        { error: 'ผู้ลงชื่อในบันทึกต้องตรงกับผู้ที่ยืนยันตัวตน' },
+        { status: 403 },
+      )
+    }
+
+    const recordOperatorId = (requestedRecordOperatorId || operatorId) as string
     if (!recordOperatorId) {
       return NextResponse.json({ error: 'ไม่พบผู้ลงชื่อ — เลือกผู้บันทึกหรือล็อกอินใหม่' }, { status: 401 })
     }
@@ -346,8 +357,8 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ data: record }, { status: 201 })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('POST /api/production/records error:', e)
-    return NextResponse.json({ error: e.message ?? 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(e) }, { status: 500 })
   }
 }
