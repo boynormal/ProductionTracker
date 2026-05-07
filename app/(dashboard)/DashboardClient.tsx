@@ -8,7 +8,7 @@ import { calcOEE, calcAvailability, calcPerformance, calcQuality, getOeeBg } fro
 import {
   Activity, Cpu, AlertTriangle, CheckCircle2,
   TrendingUp, XCircle, Plus, History, FileBarChart, CalendarDays,
-  ChevronRight, ChevronDown, RefreshCw,
+  RefreshCw, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -67,7 +67,9 @@ export function DashboardClient({
   const [selectedMonth, setSelectedMonth] = useState(initialMonth)
   const [divisionId, setDivisionId] = useState(initialData.divisionId ?? '')
   const [sectionId, setSectionId] = useState(initialData.sectionId ?? '')
-  const [showSessions, setShowSessions] = useState(false)
+  type SortCol = 'pct' | 'lOee' | 'lA' | 'lP' | 'lQ'
+  const [sortCol, setSortCol] = useState<SortCol | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
@@ -144,7 +146,6 @@ export function DashboardClient({
     type LineAgg = {
       lineId: string
       lineCode: string
-      machineIds: Set<string>
       sessionCount: number
       totalOk: number
       totalNg: number
@@ -161,14 +162,12 @@ export function DashboardClient({
         map.set(lineId, {
           lineId,
           lineCode: sess.line?.lineCode ?? '—',
-          machineIds: new Set(),
           sessionCount: 0,
           totalOk: 0, totalNg: 0, totalTarget: 0,
           totalBdMin: 0, totalHours: 0, totalRecordedHours: 0,
         })
       }
       const g = map.get(lineId)!
-      if (sess.machineId) g.machineIds.add(sess.machineId as string)
       g.sessionCount++
       g.totalHours += Number(sess.totalHours ?? 0)
       g.totalRecordedHours += Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords.length : 0
@@ -189,12 +188,26 @@ export function DashboardClient({
         const pct = g.totalTarget > 0 ? Math.round((g.totalOk / g.totalTarget) * 100) : 0
         return {
           ...g,
-          machineCount: g.machineIds.size,
           lA, lP, lQ, lOee, pct,
         }
       })
       .sort((a, b) => a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' }))
   }, [sessions])
+
+  const sortedLineSummaries = useMemo(() => {
+    if (!sortCol) return lineSummaries
+    return [...lineSummaries].sort((a, b) =>
+      sortDir === 'desc' ? b[sortCol] - a[sortCol] : a[sortCol] - b[sortCol]
+    )
+  }, [lineSummaries, sortCol, sortDir])
+
+  const handleSortCol = (col: SortCol) => {
+    setSortCol(prev => {
+      if (prev !== col) { setSortDir('desc'); return col }
+      if (sortDir === 'desc') { setSortDir('asc'); return col }
+      setSortDir('desc'); return null
+    })
+  }
 
   const unread = unreadAlertsCount
   const divisionLabel = divisionId
@@ -397,24 +410,41 @@ export function DashboardClient({
               <thead className={DASHBOARD_THEAD_STICKY}>
                 <tr>
                   <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'สาย' : 'Line'}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{locale === 'th' ? 'เครื่อง' : 'Machines'}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>Session</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>
-                    {locale === 'th' ? 'ความพร้อมใช้งาน' : 'Achievement'}
-                  </th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('oee')}>OEE</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('availability')}>A</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('performance')}>P</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('quality')}>Q</th>
+                  <SortTh
+                    label={locale === 'th' ? 'ความพร้อมใช้งาน' : 'Achievement'}
+                    col="pct" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
+                    className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
+                  />
+                  <SortTh
+                    label="OEE" title={t('oee')}
+                    col="lOee" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
+                    className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
+                  />
+                  <SortTh
+                    label="A" title={t('availability')}
+                    col="lA" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
+                    className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
+                  />
+                  <SortTh
+                    label="P" title={t('performance')}
+                    col="lP" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
+                    className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
+                  />
+                  <SortTh
+                    label="Q" title={t('quality')}
+                    col="lQ" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
+                    className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
+                  />
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
                 </tr>
               </thead>
               <tbody>
-                {lineSummaries.map((line) => {
+                {sortedLineSummaries.map((line) => {
                   const bdText = formatMinutesToHoursMinutes(line.totalBdMin)
                   const recordedHoursText = line.totalRecordedHours > 0 ? `${line.totalRecordedHours} h` : ''
                   return (
@@ -423,9 +453,6 @@ export function DashboardClient({
                         <span className="rounded-md bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
                           {line.lineCode}
                         </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
-                        {line.machineCount}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
                         {line.sessionCount}
@@ -490,164 +517,40 @@ export function DashboardClient({
         )}
       </section>
 
-      {/* ── SESSIONS TABLE ── */}
-      <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-        <button
-          type="button"
-          onClick={() => setShowSessions((v) => !v)}
-          className="flex w-full items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5 text-left hover:bg-slate-100/60 transition-colors"
-        >
-          <div>
-            <h2 className="text-sm font-semibold text-slate-700">
-              {mode === 'day'
-                ? (locale === 'th' ? 'รายการ Session วันที่เลือก' : 'Sessions — Selected Date')
-                : (locale === 'th' ? 'รายการ Session เดือนที่เลือก' : 'Sessions — Selected Month')}
-            </h2>
-            <p className="mt-0.5 text-[11px] text-slate-500">{periodText}{filterDivisionText}{filterSectionText}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-700">
-              {sessions.length} {locale === 'th' ? 'รายการ' : 'sessions'}
-            </span>
-            <Link
-              href="/production/history"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors"
-            >
-              {locale === 'th' ? 'ดูทั้งหมด' : 'View all'}
-              <ChevronRight size={12} />
-            </Link>
-            <ChevronDown
-              size={16}
-              className={cn('text-slate-400 transition-transform duration-200', showSessions && 'rotate-180')}
-            />
-          </div>
-        </button>
-
-        {showSessions && sessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Cpu size={36} className="mb-3 text-slate-200" />
-            <p className="text-sm text-slate-500">
-              {locale === 'th' ? 'ไม่มี Session ในช่วง/ตัวกรองที่เลือก' : 'No sessions for the selected period'}
-            </p>
-          </div>
-        ) : showSessions ? (
-          <div className="overflow-x-auto">
-            <table className={DASHBOARD_TABLE_BASE}>
-              <thead className={DASHBOARD_THEAD_STICKY}>
-                <tr>
-                  {mode === 'month' ? <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{locale === 'th' ? 'วันที่' : 'Date'}</th> : null}
-                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t('machine')}</th>
-                  <th className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}>{t('line')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('okQty')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('target')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>
-                    {locale === 'th' ? 'ความพร้อมใช้งาน' : 'Achievement'}
-                  </th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('oee')}>OEE</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('availability')}>A</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('performance')}>P</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')} title={t('quality')}>Q</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((sess: any) => {
-                  const ok    = sess.hourlyRecords.reduce((s: number, r: any) => s + r.okQty, 0)
-                  const tgt   = sess.hourlyRecords.reduce((s: number, r: any) => s + r.targetQty, 0)
-                  const ng    = sess.hourlyRecords.reduce((s: number, r: any) =>
-                    s + r.ngLogs.reduce((n: number, ng: any) => n + ng.ngQty, 0), 0)
-                  const bdMin = sess.hourlyRecords.reduce((s: number, r: any) =>
-                    s + r.breakdownLogs.reduce((b: number, bd: any) => b + bd.breakTimeMin, 0), 0)
-                  const pct   = tgt > 0 ? Math.round((ok / tgt) * 100) : 0
-                  const totalSessionMin = Number(sess.totalHours ?? 0) * 60
-                  const rowA = calcAvailability(totalSessionMin, bdMin)
-                  const rowP =
-                    typeof sess.dashboardPerformancePct === 'number'
-                      ? sess.dashboardPerformancePct
-                      : calcPerformance(ok, tgt)
-                  const rowQ = calcQuality(ok, ng)
-                  const rowOee = calcOEE(rowA, rowP, rowQ)
-                  const machineLabel = sess.machine?.mcNo ?? (locale === 'th' ? 'ทั้งสาย' : 'Line')
-                  const recordedHours = Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords.length : 0
-                  const recordedHoursText = recordedHours > 0 ? `${recordedHours.toLocaleString()} h` : ''
-                  const bdText = formatMinutesToHoursMinutes(bdMin)
-                  return (
-                    <tr key={sess.id} className="hover:bg-blue-50/30 transition-colors">
-                      {mode === 'month' ? (
-                        <td className="border-b border-slate-100 px-4 py-3 font-mono text-xs text-slate-500">
-                          {String(sess.reportingDate ?? sess.sessionDate).slice(0, 10)}
-                        </td>
-                      ) : null}
-                      <td className="border-b border-slate-100 px-4 py-3 font-semibold text-slate-800">{machineLabel}</td>
-                      <td className="border-b border-slate-100 px-4 py-3">
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          {sess.line?.lineCode ?? '—'}
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono font-semibold text-slate-800">
-                        {ok.toLocaleString()}
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-500">
-                        {tgt.toLocaleString()}
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right">
-                        <span className={cn(
-                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold',
-                          pct >= 100 ? 'bg-emerald-100 text-emerald-700' :
-                          pct >= 85  ? 'bg-amber-100 text-amber-700' :
-                                       'bg-red-100 text-red-600'
-                        )}>
-                          {pct}%
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right">
-                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowOee))}>
-                          {rowOee}%
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right">
-                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowA))}>
-                          {rowA}%
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right">
-                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowP))}>
-                          {rowP}%
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right">
-                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(rowQ))}>
-                          {rowQ}%
-                        </span>
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
-                        {recordedHoursText}
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-center">
-                        {bdText ? (
-                          <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-600">
-                            {bdText}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="border-b border-slate-100 px-4 py-3 text-center">
-                        {ng > 0
-                          ? <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-orange-100 px-1.5 text-xs font-bold text-orange-600">{ng}</span>
-                          : <span className="text-slate-200 text-xs">—</span>}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
-
     </div>
+  )
+}
+
+function SortTh({
+  label, title, col, sortCol, sortDir, onSort, className,
+}: {
+  label: React.ReactNode
+  title?: string
+  col: string
+  sortCol: string | null
+  sortDir: 'asc' | 'desc'
+  onSort: (col: string) => void
+  className?: string
+}) {
+  const active = sortCol === col
+  return (
+    <th className={cn('text-right', className)}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        title={title}
+        className="inline-flex items-center justify-end gap-1 rounded px-1 py-0.5 transition-colors hover:bg-slate-200/70 w-full"
+      >
+        <span>{label}</span>
+        {active && sortDir === 'desc' ? (
+          <ArrowDown size={12} className="shrink-0 text-blue-600" aria-hidden />
+        ) : active && sortDir === 'asc' ? (
+          <ArrowUp size={12} className="shrink-0 text-blue-600" aria-hidden />
+        ) : (
+          <ArrowUpDown size={12} className="shrink-0 text-slate-400" aria-hidden />
+        )}
+      </button>
+    </th>
   )
 }
 

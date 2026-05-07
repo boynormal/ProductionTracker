@@ -15,6 +15,9 @@ import {
   LayoutList,
   Percent,
   RotateCcw,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
@@ -437,6 +440,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   const [filterDayPctBand, setFilterDayPctBand] = useState<'all' | 'lt85' | '85-99' | 'ge100'>('all')
   const [filterOnlyWithBreakdown, setFilterOnlyWithBreakdown] = useState(false)
   const [filterOnlyWithNg, setFilterOnlyWithNg] = useState(false)
+  /** เรียงลำดับตาม % รวมทั้งวัน: null = ค่าเริ่มต้น (lineCode), 'asc' = น้อย→มาก, 'desc' = มาก→น้อย */
+  const [sortDayPct, setSortDayPct] = useState<null | 'asc' | 'desc'>(null)
 
   const toggleLineDetail = useCallback((id: string) => {
     setExpandedLineIds((prev) => {
@@ -701,6 +706,15 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         if (filterDayPctBand === 'ge100' && pctDay < 100) return false
       }
       return true
+    }).sort((a, b) => {
+      if (!sortDayPct) return 0
+      const aDTot = sessionTotals(a.day)
+      const aNTot = sessionTotals(a.night)
+      const bDTot = sessionTotals(b.day)
+      const bNTot = sessionTotals(b.night)
+      const aPct = avgPctDayTotalColumn(aDTot, aNTot)
+      const bPct = avgPctDayTotalColumn(bDTot, bNTot)
+      return sortDayPct === 'asc' ? aPct - bPct : bPct - aPct
     })
   }, [
     filteredSessions,
@@ -708,6 +722,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     filterDayPctBand,
     filterOnlyWithBreakdown,
     filterOnlyWithNg,
+    sortDayPct,
   ])
 
   /** รายการกะที่ยังเปิด — ใช้แสดงแถบช่วยหาปุ่มปิดกะ */
@@ -741,7 +756,11 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         lineCode,
       })
     }
-    return Array.from(deduped.values())
+    return Array.from(deduped.values()).sort((a, b) => {
+      const div = a.divisionName.localeCompare(b.divisionName, 'th', { numeric: true })
+      if (div !== 0) return div
+      return a.lineCode.localeCompare(b.lineCode, undefined, { numeric: true })
+    })
   }, [filteredSessions])
 
   const statusBadge = (status: string) => {
@@ -967,25 +986,43 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
               ? 'ปุ่มสีน้ำเงิน «ปิดกะ» อยู่ในแถวของสายนั้น — ใต้ตัวเลขในคอลัมน์ «กะเช้า» หรือ «กะดึก» ตามกะที่เปิด (หัวตารางต้องมีคำว่า กะเช้า / กะดึก แยกคอลัมน์)'
               : 'Blue «Close shift» sits on that line’s row, under the numbers in the Day or Night column (table must show separate Day / Night columns).'}
           </p>
-          <ul className="mt-2 list-inside list-disc text-xs text-blue-900/95">
-            {openShiftBannerLines.map((r) => (
-              <li key={r.id}>
-                {locale === 'th' ? 'ฝ่าย' : 'Division'}{' '}
-                <span className="font-semibold">{r.divisionName}</span>
-                {' · '}
-                {locale === 'th' ? 'สาย' : 'Line'}{' '}
-                <span className="font-mono font-semibold">{r.lineCode}</span>
-                {' · '}
-                {r.shiftType === 'NIGHT'
-                  ? locale === 'th'
-                    ? 'กะดึก'
-                    : 'Night'
-                  : locale === 'th'
-                    ? 'กะเช้า'
-                    : 'Day'}
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3 space-y-2">
+            {(() => {
+              const groups = new Map<string, typeof openShiftBannerLines>()
+              for (const r of openShiftBannerLines) {
+                const g = groups.get(r.divisionName) ?? []
+                g.push(r)
+                groups.set(r.divisionName, g)
+              }
+              return Array.from(groups.entries()).map(([divName, rows]) => (
+                <div key={divName}>
+                  <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide mb-0.5">
+                    {locale === 'th' ? 'ฝ่าย' : 'Division'} {divName}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rows.map((r) => (
+                      <span
+                        key={r.id}
+                        className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-900"
+                      >
+                        <span className="font-mono">{r.lineCode}</span>
+                        <span className={cn(
+                          'rounded px-1 py-px text-[10px] font-semibold',
+                          r.shiftType === 'NIGHT'
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'bg-amber-100 text-amber-700'
+                        )}>
+                          {r.shiftType === 'NIGHT'
+                            ? (locale === 'th' ? 'ดึก' : 'N')
+                            : (locale === 'th' ? 'เช้า' : 'D')}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
           {!canCloseSession ? (
             <p className="mt-2 text-xs font-medium text-amber-900">
               {locale === 'th'
@@ -1008,7 +1045,23 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
               <tr>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สายการผลิต' : 'Line'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'ชิ้นงาน' : 'Part'}</th>
-                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'รวมทั้งวัน' : 'Total'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>
+                  <button
+                    type="button"
+                    onClick={() => setSortDayPct(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? null : 'desc')}
+                    className="inline-flex items-center gap-1 rounded hover:bg-slate-200/70 px-1 py-0.5 transition-colors"
+                    title={locale === 'th' ? 'คลิกเพื่อเรียงตาม %' : 'Click to sort by %'}
+                  >
+                    <span>{locale === 'th' ? 'รวมทั้งวัน' : 'Total'}</span>
+                    {sortDayPct === 'desc' ? (
+                      <ArrowDown size={13} className="text-blue-600 shrink-0" aria-hidden />
+                    ) : sortDayPct === 'asc' ? (
+                      <ArrowUp size={13} className="text-blue-600 shrink-0" aria-hidden />
+                    ) : (
+                      <ArrowUpDown size={13} className="text-slate-400 shrink-0" aria-hidden />
+                    )}
+                  </button>
+                </th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะเช้า' : 'Day'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT เช้า' : 'Day OT'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
