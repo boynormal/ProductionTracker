@@ -131,13 +131,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     const auditUserId = await auditUserIdFromSession(session)
 
-    if (shouldReplaceBreakdown) {
-      await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-    if (shouldReplaceNg) {
-      await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-
     let breakdownData: ReturnType<typeof normalizeBreakdownEntries> = []
     if (shouldReplaceBreakdown) {
       try {
@@ -250,10 +243,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const updated = await prisma.hourlyRecord.update({
-      where: { id },
-      data: updatePayload,
-      include: { breakdownLogs: true, ngLogs: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      if (shouldReplaceBreakdown) {
+        await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+      if (shouldReplaceNg) {
+        await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+
+      return tx.hourlyRecord.update({
+        where: { id },
+        data: updatePayload,
+        include: { breakdownLogs: true, ngLogs: true },
+      })
     })
 
     await prisma.auditLog.create({

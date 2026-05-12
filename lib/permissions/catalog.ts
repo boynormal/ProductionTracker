@@ -41,6 +41,7 @@ export const PERMISSION_CATALOG: PermissionCatalogItem[] = [
   { key: 'api.admin.logs.notifications.read', name: 'Read notification logs API', resource: 'admin.logs.notifications', action: 'read', category: 'API', method: 'GET', path: '/api/admin/logs/notifications', defaultRoles: ['MANAGER', 'ADMIN'] },
   { key: 'api.master.write', name: 'Write master data API', resource: 'master', action: 'write', category: 'API', path: '/api/master', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.record.write', name: 'Write production records API', resource: 'production.records', action: 'write', category: 'API', method: 'POST', path: '/api/production/records', defaultRoles: ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
+  { key: 'api.production.report.read', name: 'Read production reports API', resource: 'production.reports', action: 'read', category: 'API', method: 'GET', path: '/api/production/reports', defaultRoles: ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.session.write', name: 'Write production sessions API', resource: 'production.sessions', action: 'write', category: 'API', method: 'POST', path: '/api/production/sessions', defaultRoles: ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   {
     key: 'api.production.sessions.auto-close',
