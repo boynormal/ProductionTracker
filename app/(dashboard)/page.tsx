@@ -13,7 +13,7 @@ export default async function DashboardPage() {
   const todayIso = today.toISOString().slice(0, 10)
   const todayMonth = todayIso.slice(0, 7)
 
-  const [machines, activeSessions, unreadAlertsCount, totalMachines, divisions, sections] = await Promise.all([
+  const [machines, activeSessions, unreadAlertsCount, totalMachines, divisions, sections, lineCountByDivision] = await Promise.all([
     prisma.productionSession.findMany({
       where: {
         ...reportingDateRangeWhere(today, dayEndExclusiveUTC(today), withLegacySessionDateFallback),
@@ -55,6 +55,11 @@ export default async function DashboardPage() {
         },
       },
     }),
+    prisma.line.groupBy({
+      by: ['divisionCode'],
+      where: { isActive: true, divisionCode: { not: null } },
+      _count: { id: true },
+    }),
   ])
 
   const machinesEnriched = await enrichSessionsWithCyclePerformance(machines)
@@ -71,6 +76,9 @@ export default async function DashboardPage() {
         activeSessions,
         unreadAlertsCount,
         totalMachines,
+        lineCountByDivision: lineCountByDivision
+          .filter(r => r.divisionCode)
+          .map(r => ({ divisionCode: r.divisionCode as string, total: r._count.id })),
       }))}
       initialDate={todayIso}
       initialMonth={todayMonth}

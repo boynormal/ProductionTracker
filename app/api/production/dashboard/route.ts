@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     ...(lineFilter ? { line: lineFilter } : {}),
   }
 
-  const [sessions, activeSessions, unreadAlertsCount, totalMachines] = await Promise.all([
+  const [sessions, activeSessions, unreadAlertsCount, totalMachines, lineCountByDivision] = await Promise.all([
     prisma.productionSession.findMany({
       where: sessionWhere,
       include: {
@@ -116,6 +116,11 @@ export async function GET(req: NextRequest) {
         ...(lineFilter ? { line: lineFilter } : {}),
       },
     }),
+    prisma.line.groupBy({
+      by: ['divisionCode'],
+      where: { isActive: true, divisionCode: { not: null } },
+      _count: { id: true },
+    }),
   ])
 
   const sessionsEnriched = await enrichSessionsWithCyclePerformance(sessions)
@@ -130,6 +135,9 @@ export async function GET(req: NextRequest) {
     activeSessions,
     unreadAlertsCount,
     totalMachines,
+    lineCountByDivision: lineCountByDivision
+      .filter(r => r.divisionCode)
+      .map(r => ({ divisionCode: r.divisionCode as string, total: r._count.id })),
   })
 }
 

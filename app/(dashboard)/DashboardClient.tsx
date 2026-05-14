@@ -14,6 +14,9 @@ import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { cn } from '@/lib/utils/cn'
 import {
+  BarChart, Bar, XAxis, YAxis, Cell, LabelList, ResponsiveContainer, Tooltip,
+} from 'recharts'
+import {
   DASHBOARD_TABLE_BASE,
   DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
   DASHBOARD_THEAD_STICKY,
@@ -44,6 +47,7 @@ interface Props {
     activeSessions: number
     unreadAlertsCount: number
     totalMachines: number
+    lineCountByDivision?: { divisionCode: string; total: number }[]
   }
   initialDate: string
   initialMonth: string
@@ -105,6 +109,7 @@ export function DashboardClient({
   const activeSessions = data?.activeSessions ?? 0
   const unreadAlertsCount = data?.unreadAlertsCount ?? 0
   const totalMachines = data?.totalMachines ?? 0
+  const lineCountByDivision: { divisionCode: string; total: number }[] = data?.lineCountByDivision ?? []
 
   // ยอดรวม OK/NG สำหรับแสดงใน MetricCard
   const totalOk = sessions.reduce((s: number, sess: any) =>
@@ -210,6 +215,39 @@ export function DashboardClient({
       sortDir === 'desc' ? b[sortCol] - a[sortCol] : a[sortCol] - b[sortCol]
     )
   }, [lineSummaries, sortCol, sortDir])
+
+  /** กราฟ: สัดส่วนสายที่มีข้อมูล (≥1 hourly record) ต่อสายทั้งหมด แยกตามฝ่าย */
+  const divisionChartData = useMemo(() => {
+    // 1. หา lineId ที่มี ≥1 hourly record ในช่วงที่โหลด
+    const activeLines = new Map<string, string>() // lineId → divisionCode
+    for (const sess of sessions) {
+      const dc = sess.line?.divisionCode as string | undefined
+      if (!dc) continue
+      if ((sess.hourlyRecords?.length ?? 0) > 0) {
+        activeLines.set(sess.lineId as string, dc)
+      }
+    }
+
+    // 2. นับ distinct lineId ต่อ divisionCode
+    const activeLinesPerDivision = new Map<string, Set<string>>() // divisionCode → Set<lineId>
+    for (const [lineId, dc] of activeLines) {
+      if (!activeLinesPerDivision.has(dc)) activeLinesPerDivision.set(dc, new Set())
+      activeLinesPerDivision.get(dc)!.add(lineId)
+    }
+
+    // 3. ดึงชื่อฝ่ายจาก divisions prop
+    const divCodeToName = new Map(divisions.map(d => [d.divisionCode, d.divisionName]))
+
+    // 4. Build chart rows — ใช้ lineCountByDivision เป็นฐาน (แสดงทุกฝ่าย)
+    return lineCountByDivision
+      .map(({ divisionCode, total }) => {
+        const active = activeLinesPerDivision.get(divisionCode)?.size ?? 0
+        const pct = total > 0 ? Math.round((active / total) * 100) : 0
+        const name = divCodeToName.get(divisionCode) ?? divisionCode
+        return { divisionCode, name, active, total, pct }
+      })
+      .sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name, 'th'))
+  }, [sessions, lineCountByDivision, divisions])
 
   const overallPph = useMemo(() => {
     const tg = lineSummaries.reduce((s, l) => s + l.totalGross, 0)
@@ -396,6 +434,78 @@ export function DashboardClient({
           />
         </div>
       </section>
+
+      {/* ── DIVISION LINE COVERAGE CHART ── */}
+      {divisionChartData.length > 0 && (
+        <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-slate-700">
+              {locale === 'th' ? 'สายการผลิตที่มีข้อมูล แยกตามฝ่าย' : 'Lines with Records by Division'}
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              {locale === 'th'
+                ? '% = สายที่มีบันทึกรายชั่วโมงอย่างน้อย 1 แถว ÷ สายทั้งหมดในฝ่าย (ทุกฝ่ายในระบบ)'
+                : '% = lines with ≥1 hourly record ÷ all active lines per division (system-wide)'}
+            </p>
+          </div>
+          <div className="px-4 py-4">
+            <ResponsiveContainer width="100%" height={Math.max(180, divisionChartData.length * 44)}>
+              <BarChart
+                layout="vertical"
+                data={divisionChartData}
+                margin={{ top: 0, right: 64, left: 8, bottom: 0 }}
+              >
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={110}
+                  tick={{ fontSize: 11, fill: '#475569' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  formatter={(_: unknown, __: unknown, props: any) => {
+                    const { active, total, pct } = props.payload ?? {}
+                    return [`${active} / ${total} ${locale === 'th' ? 'สาย' : 'lines'} (${pct}%)`, locale === 'th' ? 'มีข้อมูล' : 'With records']
+                  }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+                />
+                <Bar dataKey="pct" radius={[0, 4, 4, 0]} maxBarSize={28}>
+                  {divisionChartData.map((entry) => (
+                    <Cell
+                      key={entry.divisionCode}
+                      fill={entry.pct >= 85 ? '#10b981' : entry.pct >= 50 ? '#f59e0b' : '#ef4444'}
+                    />
+                  ))}
+                  <LabelList
+                    content={(props: any) => {
+                      const { x, y, width, height, value, index } = props
+                      const entry = divisionChartData[index]
+                      if (!entry) return null
+                      const xPos = (x as number) + (width as number) + 6
+                      const yPos = (y as number) + (height as number) / 2
+                      return (
+                        <text x={xPos} y={yPos} dominantBaseline="middle" fontSize={11} fontWeight={700}
+                          fill={value >= 85 ? '#059669' : value >= 50 ? '#d97706' : '#dc2626'}>
+                          {value}% ({entry.active}/{entry.total})
+                        </text>
+                      )
+                    }}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
 
       {/* ── LINE SUMMARY TABLE ── */}
       <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
