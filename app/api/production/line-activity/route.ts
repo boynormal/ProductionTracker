@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
-import { getThaiTodayUTC } from '@/lib/utils/thai-time'
+import { getThaiReportingDateUTC } from '@/lib/utils/thai-time'
 
 export type LineActivitySnapshot = {
   hourSlot: number
@@ -13,19 +13,19 @@ export type LineActivitySnapshot = {
 }
 
 /**
- * บันทึกล่าสุดต่อสาย (sessionDate วันนี้ตามไทย — ทุกกะที่ยังเปิดหรือปิดแล้ว + ไม่รวม CANCELLED)
+ * บันทึกล่าสุดต่อสาย (รอบวันรายงานปัจจุบัน — ทุกกะที่ยังเปิดหรือปิดแล้ว + ไม่รวม CANCELLED)
  * — กะดึกยังเห็นบันทึก 19:00 ของกะเช้าได้จนกว่าจะมีบันทึกกะดึกที่ใหม่กว่า
  */
 export async function GET(req: NextRequest) {
   const ctx = await getOperatorContextFromApiRequest(req)
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const today = getThaiTodayUTC()
+  const reportingDate = getThaiReportingDateUTC()
 
   const latestRows = await prisma.hourlyRecord.findMany({
     where: {
       session: {
-        sessionDate: today,
+        reportingDate,
         status: { in: ['IN_PROGRESS', 'COMPLETED'] },
       },
     },
