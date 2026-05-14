@@ -6,9 +6,9 @@ import useSWR from 'swr'
 import { useI18n } from '@/lib/i18n'
 import { calcOEE, calcAvailability, calcPerformance, calcQuality, getOeeBg } from '@/lib/utils/oee'
 import {
-  Activity, Cpu, AlertTriangle, CheckCircle2,
+  Activity, Cpu, CheckCircle2,
   TrendingUp, XCircle, Plus, History, FileBarChart, CalendarDays,
-  RefreshCw, ArrowUpDown, ArrowUp, ArrowDown,
+  RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Percent,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -67,7 +67,7 @@ export function DashboardClient({
   const [selectedMonth, setSelectedMonth] = useState(initialMonth)
   const [divisionId, setDivisionId] = useState(initialData.divisionId ?? '')
   const [sectionId, setSectionId] = useState(initialData.sectionId ?? '')
-  type SortCol = 'pct' | 'lOee' | 'lA' | 'lP' | 'lQ'
+  type SortCol = 'pct' | 'lOee' | 'lA' | 'lP' | 'lQ' | 'lPph'
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -153,6 +153,8 @@ export function DashboardClient({
       totalBdMin: number
       totalHours: number
       totalRecordedHours: number
+      totalGross: number
+      totalAdjTarget: number
     }
     const map = new Map<string, LineAgg>()
 
@@ -165,6 +167,7 @@ export function DashboardClient({
           sessionCount: 0,
           totalOk: 0, totalNg: 0, totalTarget: 0,
           totalBdMin: 0, totalHours: 0, totalRecordedHours: 0,
+          totalGross: 0, totalAdjTarget: 0,
         })
       }
       const g = map.get(lineId)!
@@ -175,7 +178,13 @@ export function DashboardClient({
         g.totalOk += rec.okQty
         g.totalTarget += rec.targetQty
         for (const bd of (rec.breakdownLogs ?? []) as any[]) g.totalBdMin += bd.breakTimeMin
-        for (const ng of (rec.ngLogs ?? []) as any[]) g.totalNg += ng.ngQty
+        let ngSum = 0
+        for (const ng of (rec.ngLogs ?? []) as any[]) { g.totalNg += ng.ngQty; ngSum += ng.ngQty }
+        // % PPH: หักเวลา Breakdown ต่อสล็อต → เป้าปรับ → เทียบ OK+NG จริง
+        const downMin = Math.min(60, (rec.breakdownLogs ?? []).reduce((s: number, b: any) => s + (Number(b.breakTimeMin) || 0), 0))
+        const netMin = Math.max(0, 60 - downMin)
+        g.totalGross += (Number(rec.okQty) || 0) + ngSum
+        g.totalAdjTarget += (Number(rec.targetQty) || 0) * (netMin / 60)
       }
     }
 
@@ -186,9 +195,10 @@ export function DashboardClient({
         const lQ = calcQuality(g.totalOk, g.totalNg)
         const lOee = calcOEE(lA, lP, lQ)
         const pct = g.totalTarget > 0 ? Math.round((g.totalOk / g.totalTarget) * 100) : 0
+        const lPph = g.totalAdjTarget > 0 ? Math.round((g.totalGross / g.totalAdjTarget) * 100) : 0
         return {
           ...g,
-          lA, lP, lQ, lOee, pct,
+          lA, lP, lQ, lOee, pct, lPph,
         }
       })
       .sort((a, b) => a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' }))
@@ -201,6 +211,12 @@ export function DashboardClient({
     )
   }, [lineSummaries, sortCol, sortDir])
 
+  const overallPph = useMemo(() => {
+    const tg = lineSummaries.reduce((s, l) => s + l.totalGross, 0)
+    const ta = lineSummaries.reduce((s, l) => s + l.totalAdjTarget, 0)
+    return ta > 0 ? Math.round((tg / ta) * 100) : 0
+  }, [lineSummaries])
+
   const handleSortCol = (col: SortCol) => {
     setSortCol(prev => {
       if (prev !== col) { setSortDir('desc'); return col }
@@ -209,7 +225,6 @@ export function DashboardClient({
     })
   }
 
-  const unread = unreadAlertsCount
   const divisionLabel = divisionId
     ? divisions.find((d) => d.id === divisionId)?.divisionName ?? ''
     : ''
@@ -373,13 +388,12 @@ export function DashboardClient({
             value={totalNg.toLocaleString()}
             sub={locale === 'th' ? 'ชิ้น NG' : 'pcs NG'}
             icon={<XCircle size={18} />} accent="red" />
-          <Link href="/alerts" className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 rounded-2xl">
-            <MetricCard
-              label={locale === 'th' ? 'แจ้งเตือน' : 'Alerts'}
-              value={unread}
-              sub={locale === 'th' ? 'กดเพื่อดูทั้งหมด' : 'Tap to view all'}
-              icon={<AlertTriangle size={18} />} accent="orange" clickable />
-          </Link>
+          <KpiCard
+            label={locale === 'th' ? '% PPH (หลังหัก BD)' : '% PPH (ex-BD)'}
+            value={`${overallPph}%`}
+            color={getOeeBg(overallPph)}
+            icon={<Percent size={20} />}
+          />
         </div>
       </section>
 
@@ -438,6 +452,14 @@ export function DashboardClient({
                     col="lQ" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
                     className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
                   />
+                  <SortTh
+                    label="% PPH"
+                    title={locale === 'th'
+                      ? '(OK+NG จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — หักนาที Breakdown ต่อชั่วโมง'
+                      : '(OK+NG actual) ÷ Σ(target × netMin/60) × 100 — breakdown minutes deducted per slot'}
+                    col="lPph" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
+                    className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
+                  />
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
@@ -492,6 +514,18 @@ export function DashboardClient({
                         <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums', getOeeBg(line.lQ))}>
                           {line.lQ}%
                         </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-4 py-3 text-right">
+                        {line.totalAdjTarget > 0 ? (
+                          <span className={cn(
+                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums',
+                            getOeeBg(line.lPph)
+                          )}>
+                            {line.lPph}%
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
                       </td>
                       <td className="border-b border-slate-100 px-4 py-3 text-right font-mono text-slate-600">
                         {recordedHoursText}

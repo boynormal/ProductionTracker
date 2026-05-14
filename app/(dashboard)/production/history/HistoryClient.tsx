@@ -239,6 +239,31 @@ function aggregateBreakdownNgForLineDay(day: any | null, night: any | null) {
   return { bdMinutes, bdCount, ngQty }
 }
 
+/**
+ * % PPH หลังหักเวลา Breakdown ต่อชั่วโมง
+ * สูตร: Σ(okQty + ngQty จริง) / Σ(targetQty × netMin/60) × 100
+ * - netMin = max(0, 60 − Σ breakTimeMin ของสล็อตนั้น) ← cap ที่ 60 นาที
+ * - รวมทั้ง DAY + NIGHT session ที่ส่งเข้ามา
+ */
+function calcPphPct(day: any | null, night: any | null): { totalGross: number; totalAdjTarget: number; pct: number } {
+  let totalGross = 0
+  let totalAdjTarget = 0
+  for (const sess of [day, night]) {
+    if (!sess) continue
+    for (const r of sess.hourlyRecords ?? []) {
+      const ngSum = (r.ngLogs ?? []).reduce((s: number, ng: any) => s + (Number(ng.ngQty) || 0), 0)
+      const gross = (Number(r.okQty) || 0) + ngSum
+      const downMin = Math.min(60, (r.breakdownLogs ?? []).reduce((s: number, b: any) => s + (Number(b.breakTimeMin) || 0), 0))
+      const netMin = Math.max(0, 60 - downMin)
+      const adjTarget = (Number(r.targetQty) || 0) * (netMin / 60)
+      totalGross += gross
+      totalAdjTarget += adjTarget
+    }
+  }
+  const pct = totalAdjTarget > 0 ? Math.round((totalGross / totalAdjTarget) * 100) : 0
+  return { totalGross, totalAdjTarget, pct }
+}
+
 function sessionTotals(sess: any | null) {
   if (!sess) return { ok: 0, tgt: 0, avgPct: 0, avgPctNormal: 0, avgPctOt: 0, hasBd: false, hasNg: false }
   const records = Array.isArray(sess.hourlyRecords) ? sess.hourlyRecords : []
@@ -1066,6 +1091,13 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT เช้า' : 'Day OT'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT ดึก' : 'Night OT'}</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>
+                  <span title={locale === 'th'
+                    ? '(OK+NG จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — หักนาที Breakdown ต่อชั่วโมง'
+                    : '(OK+NG actual) ÷ Σ(target × netMin/60) × 100 — breakdown minutes deducted per slot'}>
+                    {locale === 'th' ? '% PPH' : '% PPH'}
+                  </span>
+                </th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{t('recordedHours')}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>NG</th>
@@ -1085,6 +1117,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 const allParts   = [...dayParts, ...nightParts].filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i)
                 const operatorPartSummaries = buildOperatorPartSummaries(day, night)
                 const bdNg = aggregateBreakdownNgForLineDay(day, night)
+                const pphResult = calcPphPct(day, night)
                 const recordedHours =
                   (Array.isArray(day?.hourlyRecords) ? day.hourlyRecords.length : 0) +
                   (Array.isArray(night?.hourlyRecords) ? night.hourlyRecords.length : 0)
@@ -1245,6 +1278,23 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                           </span>
                         ) : <span className="text-slate-400 text-xs">—</span>}
                       </td>
+                      {/* Column: % PPH */}
+                      <td className="border border-slate-200 px-3 py-2 text-center">
+                        {pphResult.totalAdjTarget > 0 ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className={cn('font-bold text-sm',
+                              pphResult.pct >= 100 ? 'text-green-600' : pphResult.pct >= 85 ? 'text-yellow-500' : 'text-red-500'
+                            )}>
+                              {pphResult.pct}%
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {pphResult.totalGross.toLocaleString()} / {Math.round(pphResult.totalAdjTarget).toLocaleString()}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </td>
                       {/* Column: ชั่วโมงบันทึก */}
                       <td className="border border-slate-200 px-3 py-2 text-xs text-center">
                         {recordedHours > 0 ? (
@@ -1290,7 +1340,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                     {/* Detail row — รายชั่วโมง (ขยายเมื่อคลิกลูกศร) */}
                     {lineDetailOpen ? (
                     <tr>
-                      <td colSpan={10} className="border-x border-slate-200 bg-white p-0">
+                      <td colSpan={11} className="border-x border-slate-200 bg-white p-0">
                         <div className="grid grid-cols-12 border-b border-slate-200">
                           {/* Info panel */}
                           <div className="col-span-2 border-r border-slate-200 p-3 bg-slate-50/50">
