@@ -14,7 +14,7 @@ import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { cn } from '@/lib/utils/cn'
 import {
-  BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip, ReferenceLine,
+  BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip, ReferenceLine, LabelList,
 } from 'recharts'
 import {
   DASHBOARD_TABLE_BASE,
@@ -805,24 +805,22 @@ function DivisionCard({
             </div>
             <span className="truncate text-sm font-semibold text-slate-700">{entry.name}</span>
           </div>
-          <span className="shrink-0 text-2xl font-black tabular-nums" style={{ color: pctColor }}>
-            {entry.pct}%
-          </span>
+          <div className="flex shrink-0 flex-col items-end">
+            <span className="text-2xl font-black tabular-nums leading-none" style={{ color: pctColor }}>
+              {entry.pct}%
+            </span>
+            <span className="mt-0.5 text-[11px] tabular-nums text-slate-400">
+              {entry.active} / {entry.total} of target
+            </span>
+          </div>
         </div>
         <p className="mt-1 text-[11px] text-slate-400">
           Audit: {entry.auditLabel}
         </p>
       </div>
 
-      {/* Coverage ratio + progress bar */}
+      {/* Progress bar */}
       <div className="px-4 pb-3">
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-xs text-slate-500">
-            <span className="font-bold text-slate-700">{entry.active}</span>
-            {` / ${entry.total} `}
-            {locale === 'th' ? 'of target' : 'of target'}
-          </span>
-        </div>
         <div className="flex items-center gap-2 text-[10px] text-slate-400">
           <span>0</span>
           <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
@@ -831,14 +829,14 @@ function DivisionCard({
               style={{ width: `${coveragePct}%`, backgroundColor: color }}
             />
           </div>
-          <span>target {entry.total}</span>
+          <span>{entry.total}</span>
         </div>
       </div>
 
       {/* Mini bar chart */}
       {entry.chartData.length > 0 && (
         <div className="px-1 pb-3">
-          <ResponsiveContainer width="100%" height={110}>
+          <ResponsiveContainer width="100%" height={120}>
             <BarChart
               data={entry.chartData}
               margin={{ top: 4, right: 4, left: -22, bottom: 0 }}
@@ -866,10 +864,16 @@ function DivisionCard({
                 contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0' }}
               />
               <ReferenceLine y={100} stroke="#e2e8f0" strokeDasharray="4 3" />
-              <Bar dataKey="pct" radius={[2, 2, 0, 0]} maxBarSize={24}>
-                {entry.chartData.map((_, i) => (
-                  <Cell key={i} fill={color} fillOpacity={0.75} />
+              <Bar dataKey="pct" radius={[2, 2, 0, 0]} maxBarSize={28}>
+                {entry.chartData.map((d, i) => (
+                  <Cell key={i} fill={color} fillOpacity={d.pct > 0 ? 0.75 : 0.15} />
                 ))}
+                <LabelList
+                  dataKey="pct"
+                  position="insideTop"
+                  style={{ fontSize: 9, fill: '#fff', fontWeight: 700 }}
+                  formatter={(v: number) => v > 0 ? `${v}%` : ''}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
