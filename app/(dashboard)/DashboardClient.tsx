@@ -10,11 +10,11 @@ import {
   TrendingUp, XCircle, Plus, History, FileBarChart, CalendarDays,
   RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, Percent,
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { cn } from '@/lib/utils/cn'
 import {
-  BarChart, Bar, XAxis, YAxis, Cell, LabelList, ResponsiveContainer, Tooltip,
+  BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip, ReferenceLine,
 } from 'recharts'
 import {
   DASHBOARD_TABLE_BASE,
@@ -216,7 +216,7 @@ export function DashboardClient({
     )
   }, [lineSummaries, sortCol, sortDir])
 
-  /** กราฟ: สัดส่วนสายที่มีข้อมูล (≥1 hourly record) ต่อสายทั้งหมด แยกตามฝ่าย */
+  /** การ์ด: สัดส่วนสายที่มีข้อมูล แยกตามฝ่าย + chartData รายช่วงเวลา */
   const divisionChartData = useMemo(() => {
     // 1. หา lineId ที่มี ≥1 hourly record ในช่วงที่โหลด
     const activeLines = new Map<string, string>() // lineId → divisionCode
@@ -229,7 +229,7 @@ export function DashboardClient({
     }
 
     // 2. นับ distinct lineId ต่อ divisionCode
-    const activeLinesPerDivision = new Map<string, Set<string>>() // divisionCode → Set<lineId>
+    const activeLinesPerDivision = new Map<string, Set<string>>()
     for (const [lineId, dc] of activeLines) {
       if (!activeLinesPerDivision.has(dc)) activeLinesPerDivision.set(dc, new Set())
       activeLinesPerDivision.get(dc)!.add(lineId)
@@ -238,16 +238,59 @@ export function DashboardClient({
     // 3. ดึงชื่อฝ่ายจาก divisions prop
     const divCodeToName = new Map(divisions.map(d => [d.divisionCode, d.divisionName]))
 
-    // 4. Build chart rows — ใช้ lineCountByDivision เป็นฐาน (แสดงทุกฝ่าย)
+    // 4. Per-division per-bucket: นับสายที่มี ≥1 hourly record ในช่วงนั้น
+    const divBuckets = new Map<string, Map<string, Set<string>>>() // dc → bucket → Set<lineId>
+    for (const sess of sessions) {
+      const dc = sess.line?.divisionCode as string | undefined
+      if (!dc) continue
+      if (!divBuckets.has(dc)) divBuckets.set(dc, new Map())
+      const buckets = divBuckets.get(dc)!
+      const lineId = sess.lineId as string
+      for (const hr of (sess.hourlyRecords ?? []) as any[]) {
+        const bucketKey = mode === 'month'
+          ? String(new Date(sess.reportingDate ?? sess.sessionDate).getUTCDate())
+          : String(hr.hourSlot)
+        if (!buckets.has(bucketKey)) buckets.set(bucketKey, new Set())
+        buckets.get(bucketKey)!.add(lineId)
+      }
+    }
+
+    // 5. auditLabel — แสดงช่วงวันที่ของข้อมูล
+    const fromStr = data?.from ?? ''
+    const toStr = data?.to ?? ''
+    let auditLabel = ''
+    try {
+      if (fromStr) {
+        if (mode === 'day' || fromStr === toStr) {
+          auditLabel = format(parseISO(fromStr), 'd MMM yyyy', { locale: locale === 'th' ? th : undefined })
+        } else {
+          const fromFmt = format(parseISO(fromStr), 'd MMM', { locale: locale === 'th' ? th : undefined })
+          const toFmt = format(parseISO(toStr), 'd MMM yyyy', { locale: locale === 'th' ? th : undefined })
+          auditLabel = `${fromFmt} – ${toFmt}`
+        }
+      }
+    } catch {
+      auditLabel = fromStr
+    }
+
+    // 6. Build card rows
     return lineCountByDivision
       .map(({ divisionCode, total }) => {
         const active = activeLinesPerDivision.get(divisionCode)?.size ?? 0
         const pct = total > 0 ? Math.round((active / total) * 100) : 0
         const name = divCodeToName.get(divisionCode) ?? divisionCode
-        return { divisionCode, name, active, total, pct }
+        const buckets = divBuckets.get(divisionCode) ?? new Map()
+        const chartData = Array.from(buckets.entries())
+          .map(([x, lineSet]) => ({
+            x,
+            active: lineSet.size,
+            pct: total > 0 ? Math.round((lineSet.size / total) * 100) : 0,
+          }))
+          .sort((a, b) => Number(a.x) - Number(b.x))
+        return { divisionCode, name, active, total, pct, chartData, auditLabel }
       })
-      .sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name, 'th'))
-  }, [sessions, lineCountByDivision, divisions])
+      .sort((a, b) => a.divisionCode.localeCompare(b.divisionCode, 'th', { numeric: true, sensitivity: 'base' }))
+  }, [sessions, lineCountByDivision, divisions, mode, data, locale])
 
   const overallPph = useMemo(() => {
     const tg = lineSummaries.reduce((s, l) => s + l.totalGross, 0)
@@ -435,74 +478,22 @@ export function DashboardClient({
         </div>
       </section>
 
-      {/* ── DIVISION LINE COVERAGE CHART ── */}
+      {/* ── DIVISION LINE COVERAGE CARDS ── */}
       {divisionChartData.length > 0 && (
-        <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-slate-700">
-              {locale === 'th' ? 'สายการผลิตที่มีข้อมูล แยกตามฝ่าย' : 'Lines with Records by Division'}
-            </h2>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              {locale === 'th'
-                ? '% = สายที่มีบันทึกรายชั่วโมงอย่างน้อย 1 แถว ÷ สายทั้งหมดในฝ่าย (ทุกฝ่ายในระบบ)'
-                : '% = lines with ≥1 hourly record ÷ all active lines per division (system-wide)'}
-            </p>
-          </div>
-          <div className="px-4 py-4">
-            <ResponsiveContainer width="100%" height={Math.max(180, divisionChartData.length * 44)}>
-              <BarChart
-                layout="vertical"
-                data={divisionChartData}
-                margin={{ top: 0, right: 64, left: 8, bottom: 0 }}
-              >
-                <XAxis
-                  type="number"
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}%`}
-                  tick={{ fontSize: 11, fill: '#94a3b8' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={110}
-                  tick={{ fontSize: 11, fill: '#475569' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  formatter={(_: unknown, __: unknown, props: any) => {
-                    const { active, total, pct } = props.payload ?? {}
-                    return [`${active} / ${total} ${locale === 'th' ? 'สาย' : 'lines'} (${pct}%)`, locale === 'th' ? 'มีข้อมูล' : 'With records']
-                  }}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
-                />
-                <Bar dataKey="pct" radius={[0, 4, 4, 0]} maxBarSize={28}>
-                  {divisionChartData.map((entry) => (
-                    <Cell
-                      key={entry.divisionCode}
-                      fill={entry.pct >= 85 ? '#10b981' : entry.pct >= 50 ? '#f59e0b' : '#ef4444'}
-                    />
-                  ))}
-                  <LabelList
-                    content={(props: any) => {
-                      const { x, y, width, height, value, index } = props
-                      const entry = divisionChartData[index]
-                      if (!entry) return null
-                      const xPos = (x as number) + (width as number) + 6
-                      const yPos = (y as number) + (height as number) / 2
-                      return (
-                        <text x={xPos} y={yPos} dominantBaseline="middle" fontSize={11} fontWeight={700}
-                          fill={value >= 85 ? '#059669' : value >= 50 ? '#d97706' : '#dc2626'}>
-                          {value}% ({entry.active}/{entry.total})
-                        </text>
-                      )
-                    }}
-                  />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+        <section>
+          <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+            {locale === 'th' ? 'สายการผลิตที่มีข้อมูล แยกตามฝ่าย' : 'Lines with Records by Division'}
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {divisionChartData.map((entry, idx) => (
+              <DivisionCard
+                key={entry.divisionCode}
+                entry={entry}
+                colorIndex={idx}
+                locale={locale}
+                mode={mode}
+              />
+            ))}
           </div>
         </section>
       )}
@@ -763,6 +754,127 @@ function MetricCard({ label, value, sub, icon, accent, clickable }: {
       <p className="text-2xl font-bold leading-none text-slate-800">{value}</p>
       <p className="mt-1 text-xs font-semibold text-slate-600">{label}</p>
       <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p>
+    </div>
+  )
+}
+
+const DIVISION_COLORS = [
+  '#3b82f6', // blue
+  '#f59e0b', // amber
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#14b8a6', // teal
+  '#f97316', // orange
+  '#10b981', // emerald
+  '#6366f1', // indigo
+]
+
+type DivisionCardEntry = {
+  divisionCode: string
+  name: string
+  active: number
+  total: number
+  pct: number
+  chartData: { x: string; active: number; pct: number }[]
+  auditLabel: string
+}
+
+function DivisionCard({
+  entry,
+  colorIndex,
+  locale,
+  mode,
+}: {
+  entry: DivisionCardEntry
+  colorIndex: number
+  locale: string
+  mode: 'day' | 'month'
+}) {
+  const color = DIVISION_COLORS[colorIndex % DIVISION_COLORS.length]
+  const pctColor = entry.pct >= 85 ? '#10b981' : entry.pct >= 50 ? '#f59e0b' : '#ef4444'
+  const coveragePct = entry.total > 0 ? Math.min(100, (entry.active / entry.total) * 100) : 0
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {/* Header */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="shrink-0 rounded-lg p-1.5" style={{ backgroundColor: `${color}22` }}>
+              <Cpu size={14} style={{ color }} />
+            </div>
+            <span className="truncate text-sm font-semibold text-slate-700">{entry.name}</span>
+          </div>
+          <span className="shrink-0 text-2xl font-black tabular-nums" style={{ color: pctColor }}>
+            {entry.pct}%
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-400">
+          Audit: {entry.auditLabel}
+        </p>
+      </div>
+
+      {/* Coverage ratio + progress bar */}
+      <div className="px-4 pb-3">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-xs text-slate-500">
+            <span className="font-bold text-slate-700">{entry.active}</span>
+            {` / ${entry.total} `}
+            {locale === 'th' ? 'of target' : 'of target'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-slate-400">
+          <span>0</span>
+          <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
+              style={{ width: `${coveragePct}%`, backgroundColor: color }}
+            />
+          </div>
+          <span>target {entry.total}</span>
+        </div>
+      </div>
+
+      {/* Mini bar chart */}
+      {entry.chartData.length > 0 && (
+        <div className="px-1 pb-3">
+          <ResponsiveContainer width="100%" height={110}>
+            <BarChart
+              data={entry.chartData}
+              margin={{ top: 4, right: 4, left: -22, bottom: 0 }}
+              barCategoryGap="20%"
+            >
+              <XAxis
+                dataKey="x"
+                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                domain={[0, 100]}
+                tickCount={3}
+                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(v) => `${v}%`}
+              />
+              <Tooltip
+                formatter={(v: unknown, _: unknown, props: any) => {
+                  const active = props?.payload?.active ?? v
+                  return [`${active} / ${entry.total} ${locale === 'th' ? 'สาย' : 'lines'} (${v}%)`, locale === 'th' ? 'สายที่รัน' : 'Lines running']
+                }}
+                contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0' }}
+              />
+              <ReferenceLine y={100} stroke="#e2e8f0" strokeDasharray="4 3" />
+              <Bar dataKey="pct" radius={[2, 2, 0, 0]} maxBarSize={24}>
+                {entry.chartData.map((_, i) => (
+                  <Cell key={i} fill={color} fillOpacity={0.75} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   )
 }
