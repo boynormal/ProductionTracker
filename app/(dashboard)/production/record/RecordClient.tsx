@@ -27,6 +27,7 @@ const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
   hourSlot:  z.number().int().min(1).max(11),
   okQty:     z.number().int().min(0),
   remark:    z.string().optional(),
+  lotNumber: z.string().max(100).optional(),
   hasBreakdown: z.boolean().default(false),
   hasNg:        z.boolean().default(false),
   breakdown: z.array(z.object({
@@ -949,6 +950,7 @@ export function RecordClient({
           partId:    data.partId,
           okQty:     data.okQty,
           remark:    data.remark ?? '',
+          lotNumber: data.lotNumber?.trim() || undefined,
           breakdown: breakdownPayload,
           ng:        ngPayload,
         }),
@@ -1797,6 +1799,21 @@ export function RecordClient({
             )}
           </div>
         )}
+
+        {/* Lot Number */}
+        <div className={cn('rounded-xl border border-slate-100 bg-white p-4 shadow-sm', selectedSlotRec && 'opacity-40 pointer-events-none select-none')}>
+          <label className="mb-2 block text-base font-semibold text-slate-700 sm:text-lg">
+            {locale === 'th' ? 'Lot Number' : 'Lot Number'}
+            <span className="ml-2 text-sm font-normal text-slate-400">({locale === 'th' ? 'ถ้ามี' : 'optional'})</span>
+          </label>
+          <input
+            type="text"
+            {...register('lotNumber')}
+            maxLength={100}
+            placeholder={locale === 'th' ? 'เช่น LOT-2026-001' : 'e.g. LOT-2026-001'}
+            className="w-full rounded-lg border border-slate-200 px-4 py-3 text-lg font-mono outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          />
+        </div>
 
         {/* OK Qty */}
         <div className={cn('rounded-xl border border-slate-100 bg-white p-4 shadow-sm', selectedSlotRec && 'opacity-40 pointer-events-none select-none')}>

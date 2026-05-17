@@ -8,6 +8,7 @@ import { checkPermissionForSession } from '@/lib/permissions/guard'
 const updateSchema = z.object({
   okQty: z.number().int().min(0).optional(),
   remark: z.string().optional(),
+  lotNumber: z.string().max(100).optional().nullable(),
   partId: z.string().optional(),
   breakdown: z.array(z.object({
     breakdownStart: z.string().min(1),
@@ -217,10 +218,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     const updatePayload: Parameters<typeof prisma.hourlyRecord.update>[0]['data'] = {
-      okQty:  data.okQty !== undefined ? data.okQty : existing.okQty,
-      partId: nextPartId,
+      okQty:     data.okQty !== undefined ? data.okQty : existing.okQty,
+      partId:    nextPartId,
       targetQty,
-      remark: data.remark !== undefined ? data.remark : existing.remark,
+      remark:    data.remark !== undefined ? data.remark : existing.remark,
+      lotNumber: data.lotNumber !== undefined ? (data.lotNumber ?? null) : existing.lotNumber,
     }
 
     if (shouldReplaceBreakdown) {

@@ -61,6 +61,7 @@ export function useDashboardNav(): { items: DashboardNavItem[] } {
             { href: '/production/history', label: t('productionHistory'), permissionKey: 'menu.production.history' },
             { href: '/production/report', label: t('productionReport'), permissionKey: 'menu.production.report' },
             { href: '/production/mtbf', label: 'MTBF/MTTR', permissionKey: 'menu.production.mtbf' },
+            { href: '/production/lot', label: t('productionLot'), permissionKey: 'menu.production.lot' },
           ],
         },
         {

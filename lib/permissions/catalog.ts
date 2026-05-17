@@ -21,6 +21,7 @@ export const PERMISSION_CATALOG: PermissionCatalogItem[] = [
   { key: 'menu.production.history', name: 'Production history menu', resource: 'menu', action: 'view', category: 'MENU', path: '/production/history', defaultRoles: ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'menu.production.report', name: 'Production report menu', resource: 'menu', action: 'view', category: 'MENU', path: '/production/report', defaultRoles: ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'menu.production.mtbf', name: 'MTBF/MTTR menu', resource: 'menu', action: 'view', category: 'MENU', path: '/production/mtbf', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },
+  { key: 'menu.production.lot', name: 'Lot traceability menu', resource: 'menu', action: 'view', category: 'MENU', path: '/production/lot', defaultRoles: ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'menu.master.lines', name: 'Master lines menu', resource: 'menu', action: 'view', category: 'MENU', path: '/master/lines', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'menu.master.machines', name: 'Master machines menu', resource: 'menu', action: 'view', category: 'MENU', path: '/master/machines', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'menu.master.parts', name: 'Master parts menu', resource: 'menu', action: 'view', category: 'MENU', path: '/master/parts', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },

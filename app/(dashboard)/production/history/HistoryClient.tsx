@@ -467,6 +467,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   const [filterOnlyWithNg, setFilterOnlyWithNg] = useState(false)
   /** เรียงลำดับตาม % รวมทั้งวัน: null = ค่าเริ่มต้น (lineCode), 'asc' = น้อย→มาก, 'desc' = มาก→น้อย */
   const [sortDayPct, setSortDayPct] = useState<null | 'asc' | 'desc'>(null)
+  /** เรียงลำดับตาม % PPH */
+  const [sortPph, setSortPph] = useState<null | 'asc' | 'desc'>(null)
 
   const toggleLineDetail = useCallback((id: string) => {
     setExpandedLineIds((prev) => {
@@ -732,6 +734,11 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
       }
       return true
     }).sort((a, b) => {
+      if (sortPph) {
+        const aPph = calcPphPct(a.day, a.night).pct
+        const bPph = calcPphPct(b.day, b.night).pct
+        return sortPph === 'asc' ? aPph - bPph : bPph - aPph
+      }
       if (!sortDayPct) return 0
       const aDTot = sessionTotals(a.day)
       const aNTot = sessionTotals(a.night)
@@ -748,6 +755,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     filterOnlyWithBreakdown,
     filterOnlyWithNg,
     sortDayPct,
+    sortPph,
   ])
 
   /** รายการกะที่ยังเปิด — ใช้แสดงแถบช่วยหาปุ่มปิดกะ */
@@ -1073,7 +1081,10 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 <th className={DASHBOARD_TH_STICKY_SOLID}>
                   <button
                     type="button"
-                    onClick={() => setSortDayPct(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? null : 'desc')}
+                    onClick={() => {
+                      setSortPph(null)
+                      setSortDayPct(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? null : 'desc')
+                    }}
                     className="inline-flex items-center gap-1 rounded hover:bg-slate-200/70 px-1 py-0.5 transition-colors"
                     title={locale === 'th' ? 'คลิกเพื่อเรียงตาม %' : 'Click to sort by %'}
                   >
@@ -1092,11 +1103,26 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'กะดึก' : 'Night'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'OT ดึก' : 'Night OT'}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>
-                  <span title={locale === 'th'
-                    ? '(OK+NG จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — หักนาที Breakdown ต่อชั่วโมง'
-                    : '(OK+NG actual) ÷ Σ(target × netMin/60) × 100 — breakdown minutes deducted per slot'}>
-                    {locale === 'th' ? '% PPH' : '% PPH'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSortDayPct(null)
+                      setSortPph(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? null : 'desc')
+                    }}
+                    className="inline-flex items-center gap-1 rounded hover:bg-slate-200/70 px-1 py-0.5 transition-colors"
+                    title={locale === 'th'
+                      ? '(OK+NG จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — คลิกเพื่อเรียง'
+                      : '(OK+NG actual) ÷ Σ(target × netMin/60) × 100 — click to sort'}
+                  >
+                    <span>% PPH</span>
+                    {sortPph === 'desc' ? (
+                      <ArrowDown size={13} className="text-blue-600 shrink-0" aria-hidden />
+                    ) : sortPph === 'asc' ? (
+                      <ArrowUp size={13} className="text-blue-600 shrink-0" aria-hidden />
+                    ) : (
+                      <ArrowUpDown size={13} className="text-slate-400 shrink-0" aria-hidden />
+                    )}
+                  </button>
                 </th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{t('recordedHours')}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>

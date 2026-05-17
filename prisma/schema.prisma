@@ -421,6 +421,7 @@ model HourlyRecord {
   hasNg          Boolean  @default(false)
   isModelChanged Boolean  @default(false)
   remark         String?
+  lotNumber      String?  @db.VarChar(100)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -437,6 +438,7 @@ model HourlyRecord {
   @@index([operatorId])
   @@index([partId])
   @@index([recordTime])
+  @@index([lotNumber])
   @@map("hourly_records")
 }
 

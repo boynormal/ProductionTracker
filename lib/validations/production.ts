@@ -11,6 +11,7 @@ export const hourlyRecordSchema = z.object({
   okQty:          z.number().int().min(0),
   isOvertimeHour: z.boolean().default(false),
   remark:         z.string().optional().nullable(),
+  lotNumber:      z.string().max(100).optional().nullable(),
   breakdownLogs: z.array(z.object({
     machineId:         z.string().optional().nullable(),
     breakdownStart:    z.string().or(z.date()),

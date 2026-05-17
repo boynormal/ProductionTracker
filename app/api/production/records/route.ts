@@ -20,6 +20,7 @@ const schema = z.object({
   machineId:      z.string().optional(),
   okQty:          z.number().int().min(0),
   remark:         z.string().optional(),
+  lotNumber:      z.string().max(100).optional(),
   breakdown: z.array(z.object({
     breakdownStart:    z.string().min(1),
     breakdownEnd:      z.string().optional(),
@@ -310,6 +311,7 @@ export async function POST(req: NextRequest) {
         hasBreakdown,
         hasNg,
         remark:         data.remark ?? null,
+        lotNumber:      data.lotNumber ?? null,
         breakdownLogs: hasBreakdown ? {
           create: breakdownData.map(bd => ({
             breakdownStart:    bd.breakdownStart,
