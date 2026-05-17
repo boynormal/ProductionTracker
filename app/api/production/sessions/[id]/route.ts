@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
@@ -8,6 +8,8 @@ import { auditUserIdFromSession } from '@/lib/audit-user'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 type Params = { params: Promise<{ id: string }> }
+
+const REOPEN_SHIFT_ROLES = new Set<UserRole>(['SUPERVISOR', 'MANAGER', 'ADMIN'])
 
 export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await getOperatorContextFromApiRequest(req)
@@ -66,11 +68,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       where: { id: session.user.id! },
       select: { role: true, isActive: true },
     })
-    if (!dbUser?.isActive || dbUser.role !== 'ADMIN') {
+    if (!dbUser?.isActive || !REOPEN_SHIFT_ROLES.has(dbUser.role)) {
       return NextResponse.json(
         {
           error:
-            'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ยกเลิกปิดกะได้ — Only ADMIN may reopen a completed shift.',
+            'เฉพาะหัวหน้างาน ผู้จัดการ หรือ Admin เท่านั้นที่ยกเลิกปิดกะได้ — Only Supervisor, Manager, or Admin may reopen a completed shift.',
         },
         { status: 403 },
       )

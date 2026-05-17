@@ -52,6 +52,7 @@ interface LineRow {
 }
 
 const EDIT_ROLES = new Set(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
+const REOPEN_SHIFT_ROLES = new Set(['SUPERVISOR', 'MANAGER', 'ADMIN'])
 
 function recordForHourSlot(records: any[], slot: number) {
   return records.find((r: any) => Number(r.hourSlot) === slot)
@@ -480,8 +481,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
   }, [])
 
   const canEditRecord = !!(userRole && EDIT_ROLES.has(userRole))
-  /** ยกเลิกปิดกะ: API ต้องการทั้ง role ADMIN (จาก DB ตอน PATCH) และสิทธิ์ session.write */
-  const canAdminReopenShift = userRole === 'ADMIN' && canCloseSession
+  /** ยกเลิกปิดกะ: SUPERVISOR / MANAGER / ADMIN + สิทธิ์ session.write (ตรงกับ API) */
+  const canReopenShift = !!(userRole && REOPEN_SHIFT_ROLES.has(userRole) && canCloseSession)
 
   const divisionOptions = useMemo(() => {
     const m = new Map<string, string>()
@@ -663,10 +664,10 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     [canCloseSession, closeProductionSession, closingSessionId, locale],
   )
 
-  /** Admin: ย้อน COMPLETED → IN_PROGRESS — ต้องตรงกับ API (role ADMIN + session.write) */
+  /** ย้อน COMPLETED → IN_PROGRESS — ต้องตรงกับ API (SUPERVISOR / MANAGER / ADMIN + session.write) */
   const renderShiftReopenControl = useCallback(
     (sess: any | null) => {
-      if (!sess || sess.status !== 'COMPLETED' || !canAdminReopenShift) return null
+      if (!sess || sess.status !== 'COMPLETED' || !canReopenShift) return null
       const sid = sess.id ? String(sess.id) : ''
       if (!sid) return null
       return (
@@ -683,7 +684,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         </div>
       )
     },
-    [canAdminReopenShift, locale, reopenProductionSession, reopeningSessionId],
+    [canReopenShift, locale, reopenProductionSession, reopeningSessionId],
   )
 
   useEffect(() => {
@@ -839,11 +840,11 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
               : 'Closing a shift requires api.production.session.write; contact Admin if you do not see the button.'}
           </p>
         )}
-        {canAdminReopenShift ? (
+        {canReopenShift ? (
           <p className="text-xs text-amber-800/90 mt-1 rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1">
             {locale === 'th'
-              ? 'Admin: หากปิดกะผิด ใช้ปุ่มสีเหลือง «ยกเลิกปิดกะ» ใต้คอลัมน์กะที่สถานะเสร็จสิ้น — บันทึก audit เป็น REOPEN_SESSION'
-              : 'Admin: if a shift was closed by mistake, use the amber «Reopen shift» under a completed shift column — audited as REOPEN_SESSION.'}
+              ? 'หัวหน้างาน / ผู้จัดการ / Admin: หากปิดกะผิด ใช้ปุ่มสีเหลือง «ยกเลิกปิดกะ» ใต้คอลัมน์กะที่สถานะเสร็จสิ้น — บันทึก audit เป็น REOPEN_SESSION'
+              : 'Supervisor / Manager / Admin: if a shift was closed by mistake, use the amber «Reopen shift» under a completed shift column — audited as REOPEN_SESSION.'}
           </p>
         ) : null}
         {!canEditRecord ? (
@@ -1483,7 +1484,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                                           {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
                                         </button>
                                       ) : null}
-                                      {day.status === 'COMPLETED' && canAdminReopenShift && day.id ? (
+                                      {day.status === 'COMPLETED' && canReopenShift && day.id ? (
                                         <button
                                           type="button"
                                           disabled={reopeningSessionId === day.id}
@@ -1535,7 +1536,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                                           {locale === 'th' ? 'ปิดกะ' : 'Close shift'}
                                         </button>
                                       ) : null}
-                                      {night.status === 'COMPLETED' && canAdminReopenShift && night.id ? (
+                                      {night.status === 'COMPLETED' && canReopenShift && night.id ? (
                                         <button
                                           type="button"
                                           disabled={reopeningSessionId === night.id}
