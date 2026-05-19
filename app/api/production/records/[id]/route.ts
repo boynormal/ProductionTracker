@@ -30,6 +30,23 @@ const updateSchema = z.object({
 
 type Params = { params: Promise<{ id: string }> }
 
+const RECORD_EDIT_PERMISSION_KEY = 'api.production.record.edit'
+
+type RecordPermissionSource = {
+  session?: {
+    lineId?: string | null
+    line?: { sectionId?: string | null } | null
+  } | null
+}
+
+function recordEditPermissionContext(req: NextRequest, record: RecordPermissionSource) {
+  return {
+    apiPath: req.nextUrl.pathname,
+    lineId: record.session?.lineId ?? null,
+    sectionId: record.session?.line?.sectionId ?? null,
+  }
+}
+
 function normalizeBreakdownEntries(entries: NonNullable<z.infer<typeof updateSchema>['breakdown']>) {
   return entries.map((bd, index) => {
     const breakdownStart = parseThaiLocalToUtc(bd.breakdownStart)
@@ -102,15 +119,30 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
-    if (!canWrite) {
+    const { id } = await params
+    const existing = await prisma.hourlyRecord.findUnique({
+      where: { id },
+      include: {
+        session: {
+          select: {
+            lineId: true,
+            line: { select: { sectionId: true } },
+          },
+        },
+        breakdownLogs: true,
+        ngLogs: true,
+      },
+    })
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    const canEdit = await checkPermissionForSession(session, RECORD_EDIT_PERMISSION_KEY, recordEditPermissionContext(req, existing))
+    if (!canEdit) {
       return NextResponse.json(
         { error: 'แก้ไขได้เฉพาะหัวหน้างาน / วิศวกร / ผู้จัดการ / Admin' },
         { status: 403 },
       )
     }
 
-    const { id } = await params
     const body = await req.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
@@ -120,24 +152,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const shouldReplaceBreakdown = Object.prototype.hasOwnProperty.call(body, 'breakdown')
     const shouldReplaceNg = Object.prototype.hasOwnProperty.call(body, 'ng')
 
-    const existing = await prisma.hourlyRecord.findUnique({
-      where: { id },
-      include: {
-        session: { select: { lineId: true } },
-        breakdownLogs: true,
-        ngLogs: true,
-      },
-    })
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
     const auditUserId = await auditUserIdFromSession(session)
-
-    if (shouldReplaceBreakdown) {
-      await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-    if (shouldReplaceNg) {
-      await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
 
     let breakdownData: ReturnType<typeof normalizeBreakdownEntries> = []
     if (shouldReplaceBreakdown) {
@@ -252,20 +267,31 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const updated = await prisma.hourlyRecord.update({
-      where: { id },
-      data: updatePayload,
-      include: { breakdownLogs: true, ngLogs: true },
-    })
+    const updated = await prisma.$transaction(async (tx) => {
+      if (shouldReplaceBreakdown) {
+        await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+      if (shouldReplaceNg) {
+        await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
 
-    await prisma.auditLog.create({
-      data: {
-        userId:   auditUserId,
-        action:   'UPDATE_RECORD',
-        entity:   'hourly_records',
-        entityId: id,
-        details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
-      },
+      const nextRecord = await tx.hourlyRecord.update({
+        where: { id },
+        data: updatePayload,
+        include: { breakdownLogs: true, ngLogs: true },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          userId:   auditUserId,
+          action:   'UPDATE_RECORD',
+          entity:   'hourly_records',
+          entityId: id,
+          details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
+        },
+      })
+
+      return nextRecord
     })
 
     return NextResponse.json({ data: updated })
@@ -279,16 +305,32 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
-  if (!canWrite) {
+  const { id } = await params
+  const existing = await prisma.hourlyRecord.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      session: {
+        select: {
+          lineId: true,
+          line: { select: { sectionId: true } },
+        },
+      },
+    },
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canEdit = await checkPermissionForSession(session, RECORD_EDIT_PERMISSION_KEY, recordEditPermissionContext(req, existing))
+  if (!canEdit) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { id } = await params
-  await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.modelChange.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.hourlyRecord.delete({ where: { id } })
+  await prisma.$transaction(async (tx) => {
+    await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.modelChange.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.hourlyRecord.delete({ where: { id } })
+  })
 
   return NextResponse.json({ success: true })
 }
