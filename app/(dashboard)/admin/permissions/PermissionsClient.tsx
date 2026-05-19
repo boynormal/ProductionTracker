@@ -54,7 +54,7 @@ const MODULES: ModuleDef[] = [
     labelEn: 'Production Recording',
     descriptionTh: 'เข้าหน้าบันทึก และบันทึก/เปิด Session การผลิต',
     descriptionEn: 'Access record page and create/update production sessions',
-    permissionKeys: ['menu.production.record', 'api.production.record.write', 'api.production.session.write'],
+    permissionKeys: ['menu.production.record', 'api.production.record.write', 'api.production.record.edit', 'api.production.session.write'],
   },
   {
     id: 'production_reports',
