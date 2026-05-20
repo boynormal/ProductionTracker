@@ -60,9 +60,9 @@ const MODULES: ModuleDef[] = [
     id: 'production_reports',
     labelTh: 'ประวัติและรายงานการผลิต',
     labelEn: 'Production History & Reports',
-    descriptionTh: 'เข้าหน้าประวัติ/รายงาน/MTBF และ Alerts',
-    descriptionEn: 'Access history/report/MTBF pages and alerts',
-    permissionKeys: ['menu.production.history', 'menu.production.report', 'menu.production.mtbf', 'menu.alerts'],
+    descriptionTh: 'เข้าหน้าประวัติ/รายงาน/MTBF/Lot และ Alerts',
+    descriptionEn: 'Access history/report/MTBF/lot pages and alerts',
+    permissionKeys: ['menu.production.history', 'menu.production.report', 'menu.production.mtbf', 'menu.production.lot', 'api.production.lot.read', 'menu.alerts'],
   },
   {
     id: 'master_manage',

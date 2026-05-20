@@ -43,6 +43,7 @@ export const PERMISSION_CATALOG: PermissionCatalogItem[] = [
   { key: 'api.master.write', name: 'Write master data API', resource: 'master', action: 'write', category: 'API', path: '/api/master', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.record.write', name: 'Write production records API', resource: 'production.records', action: 'write', category: 'API', method: 'POST', path: '/api/production/records', defaultRoles: ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.session.write', name: 'Write production sessions API', resource: 'production.sessions', action: 'write', category: 'API', method: 'POST', path: '/api/production/sessions', defaultRoles: ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
+  { key: 'api.production.lot.read', name: 'Read lot traceability API', resource: 'production.lot', action: 'read', category: 'API', method: 'GET', path: '/api/production/lot', defaultRoles: ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   {
     key: 'api.production.sessions.auto-close',
     name: 'Run session auto-close job',
