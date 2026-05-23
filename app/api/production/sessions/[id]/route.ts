@@ -159,17 +159,29 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const canWrite = await checkPermissionForSession(session, 'api.production.session.write', { apiPath: req.nextUrl.pathname })
-  if (!canWrite) {
+  const canDelete = await checkPermissionForSession(session, 'api.production.session.delete', { apiPath: req.nextUrl.pathname })
+  if (!canDelete) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { id } = await params
-  await prisma.ngLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
-  await prisma.breakdownLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
-  await prisma.modelChange.deleteMany({ where: { sessionId: id } })
-  await prisma.hourlyRecord.deleteMany({ where: { sessionId: id } })
-  await prisma.productionSession.delete({ where: { id } })
+  const auditUid = await auditUserIdFromSession(session)
+  await prisma.$transaction([
+    prisma.ngLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } }),
+    prisma.breakdownLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } }),
+    prisma.modelChange.deleteMany({ where: { sessionId: id } }),
+    prisma.hourlyRecord.deleteMany({ where: { sessionId: id } }),
+    prisma.productionSession.delete({ where: { id } }),
+    prisma.auditLog.create({
+      data: {
+        userId: auditUid,
+        action: 'DELETE_SESSION',
+        entity: 'production_sessions',
+        entityId: id,
+        details: { sessionId: id },
+      },
+    }),
+  ])
 
   return NextResponse.json({ success: true })
 }
