@@ -4,35 +4,47 @@ import {
   calcPerformancePctFromIdealMinutesAndPlannedMinutes,
   computeSessionIdealMinutesForPerformance,
 } from '@/lib/utils/oee-cycle-performance'
+import { dayEndExclusiveUTC } from '@/lib/time-utils'
 
 function linePartKey(lineId: string, partId: string) {
   return `${lineId}:${partId}`
 }
 
-export async function fetchLinePartTargetMetaByPair(
+type LineTargetMetaRow = LineTargetMeta & {
+  lineId: string
+  partId: string
+  effectiveDate: Date
+}
+
+async function fetchLinePartTargetRowsByPair(
   pairs: Array<{ lineId: string; partId: string }>,
-): Promise<Map<string, LineTargetMeta>> {
+  effectiveDateBefore?: Date,
+): Promise<LineTargetMetaRow[]> {
   const unique = new Map<string, { lineId: string; partId: string }>()
   for (const p of pairs) {
     unique.set(linePartKey(p.lineId, p.partId), p)
   }
   const list = [...unique.values()]
-  if (list.length === 0) return new Map()
+  if (list.length === 0) return []
 
-  const rows = await prisma.linePartTarget.findMany({
+  return prisma.linePartTarget.findMany({
     where: {
       isActive: true,
+      ...(effectiveDateBefore ? { effectiveDate: { lt: effectiveDateBefore } } : {}),
       OR: list.map((p) => ({ lineId: p.lineId, partId: p.partId })),
     },
     orderBy: { effectiveDate: 'desc' },
     select: {
       lineId: true,
       partId: true,
+      effectiveDate: true,
       cycleTimeMin: true,
       piecesPerHour: true,
     },
   })
+}
 
+function buildLinePartTargetMetaByPair(rows: LineTargetMetaRow[]): Map<string, LineTargetMeta> {
   const map = new Map<string, LineTargetMeta>()
   for (const row of rows) {
     const k = linePartKey(row.lineId, row.partId)
@@ -44,6 +56,22 @@ export async function fetchLinePartTargetMetaByPair(
     }
   }
   return map
+}
+
+function buildLinePartTargetMetaByPairForDate(
+  rows: LineTargetMetaRow[],
+  asOfDate: Date,
+): Map<string, LineTargetMeta> {
+  const effectiveDateBefore = dayEndExclusiveUTC(asOfDate)
+  return buildLinePartTargetMetaByPair(
+    rows.filter((row) => row.effectiveDate.getTime() < effectiveDateBefore.getTime()),
+  )
+}
+
+export async function fetchLinePartTargetMetaByPair(
+  pairs: Array<{ lineId: string; partId: string }>,
+): Promise<Map<string, LineTargetMeta>> {
+  return buildLinePartTargetMetaByPair(await fetchLinePartTargetRowsByPair(pairs))
 }
 
 export function collectLinePartPairsFromSessions(
@@ -60,6 +88,8 @@ export function collectLinePartPairsFromSessions(
 
 type SessionShape = {
   lineId: string
+  reportingDate?: Date | null
+  sessionDate: Date
   hourlyRecords: Array<{
     okQty: number
     targetQty: number
@@ -79,10 +109,21 @@ export async function enrichSessionsWithCyclePerformance<T extends SessionShape>
     }
   >
 > {
-  const metaMap = await fetchLinePartTargetMetaByPair(
-    collectLinePartPairsFromSessions(sessions),
+  const pairs = collectLinePartPairsFromSessions(sessions)
+  const latestSessionDate = sessions.reduce<Date | null>((latest, sess) => {
+    const sessionDate = sess.reportingDate ?? sess.sessionDate
+    if (!latest || sessionDate.getTime() > latest.getTime()) return sessionDate
+    return latest
+  }, null)
+  const targetRows = await fetchLinePartTargetRowsByPair(
+    pairs,
+    latestSessionDate ? dayEndExclusiveUTC(latestSessionDate) : undefined,
   )
   return sessions.map((sess) => {
+    const metaMap = buildLinePartTargetMetaByPairForDate(
+      targetRows,
+      sess.reportingDate ?? sess.sessionDate,
+    )
     const ideal = computeSessionIdealMinutesForPerformance(sess, metaMap)
     const plannedMinutes = sess.hourlyRecords.length * 60
     const pct = calcPerformancePctFromIdealMinutesAndPlannedMinutes(
