@@ -42,7 +42,9 @@ function addUtcDays(date: Date, days: number) {
 
 function parseSlotBoundaryUtc(reportingDate: Date, shiftType: ShiftType, hhmm: string): Date {
   const hour = Number.parseInt(hhmm.slice(0, 2), 10)
-  const baseDate = shiftType === 'NIGHT' && hour < 8 ? addUtcDays(reportingDate, 1) : reportingDate
+  const minute = Number.parseInt(hhmm.slice(3, 5), 10)
+  const minutes = hour * 60 + minute
+  const baseDate = shiftType === 'NIGHT' && minutes <= 8 * 60 ? addUtcDays(reportingDate, 1) : reportingDate
   const parsed = parseThaiLocalToUtc(`${formatThaiDateUTCISO(baseDate)}T${hhmm}`)
   if (!parsed) throw new Error(`Invalid slot boundary ${shiftType} ${hhmm}`)
   return parsed
