@@ -132,13 +132,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     const auditUserId = await auditUserIdFromSession(session)
 
-    if (shouldReplaceBreakdown) {
-      await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-    if (shouldReplaceNg) {
-      await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-
     let breakdownData: ReturnType<typeof normalizeBreakdownEntries> = []
     if (shouldReplaceBreakdown) {
       try {
@@ -214,7 +207,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
             orderBy: { effectiveDate: 'desc' },
           })
         : null
-      targetQty = target?.piecesPerHour ?? 0
+      if (!target) {
+        return NextResponse.json({ error: 'ไม่พบ Target ของ Part นี้สำหรับ Line ของ Session' }, { status: 400 })
+      }
+      targetQty = target.piecesPerHour
     }
 
     const updatePayload: Parameters<typeof prisma.hourlyRecord.update>[0]['data'] = {
@@ -252,20 +248,31 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const updated = await prisma.hourlyRecord.update({
-      where: { id },
-      data: updatePayload,
-      include: { breakdownLogs: true, ngLogs: true },
-    })
+    const updated = await prisma.$transaction(async (tx) => {
+      if (shouldReplaceBreakdown) {
+        await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+      if (shouldReplaceNg) {
+        await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
 
-    await prisma.auditLog.create({
-      data: {
-        userId:   auditUserId,
-        action:   'UPDATE_RECORD',
-        entity:   'hourly_records',
-        entityId: id,
-        details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
-      },
+      const updatedRecord = await tx.hourlyRecord.update({
+        where: { id },
+        data: updatePayload,
+        include: { breakdownLogs: true, ngLogs: true },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          userId:   auditUserId,
+          action:   'UPDATE_RECORD',
+          entity:   'hourly_records',
+          entityId: id,
+          details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
+        },
+      })
+
+      return updatedRecord
     })
 
     return NextResponse.json({ data: updated })
