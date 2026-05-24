@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { dayEndExclusiveUTC, getThaiTodayUTC, parseThaiCalendarDateUtc } from '@/lib/time-utils'
+import { dayEndExclusiveUTC, getThaiReportingDateUTC, parseThaiCalendarDateUtc } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { enrichSessionsWithCyclePerformance } from '@/lib/production/enrich-dashboard-sessions'
 
@@ -28,9 +28,9 @@ export async function GET(req: NextRequest) {
   const modeRaw = searchParams.get('mode')
   const mode: Mode = modeRaw === 'month' ? 'month' : 'day'
 
-  const today = getThaiTodayUTC()
-  let from = today
-  let toExclusive = dayEndExclusiveUTC(today)
+  const reportingDate = getThaiReportingDateUTC()
+  let from = reportingDate
+  let toExclusive = dayEndExclusiveUTC(reportingDate)
 
   if (mode === 'day') {
     const dateStr = searchParams.get('date')
