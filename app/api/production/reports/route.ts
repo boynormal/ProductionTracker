@@ -5,6 +5,7 @@ import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
 import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/utils/oee'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 /** รวม Session ที่ยังเปิดกะ — ไม่เช่นนั้นรายงานจะว่างจนกว่าจะปิดกะ */
 const REPORT_SESSION_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const
@@ -38,6 +39,14 @@ export async function GET(req: NextRequest) {
   const sectionId = searchParams.get('sectionId') || undefined
   const granRaw = searchParams.get('granularity') ?? 'day'
   const granularity: Granularity = granRaw === 'month' ? 'month' : 'day'
+
+  const canRead = await checkPermissionForSession(session, 'api.production.report.read', {
+    apiPath: req.nextUrl.pathname,
+    sectionId,
+  })
+  if (!canRead) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   if (!from || !to) {
     return NextResponse.json({ error: 'from and to are required (YYYY-MM-DD)' }, { status: 400 })
