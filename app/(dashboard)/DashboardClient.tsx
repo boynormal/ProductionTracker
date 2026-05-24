@@ -18,6 +18,7 @@ import {
 } from 'recharts'
 import {
   DASHBOARD_TABLE_BASE,
+  DASHBOARD_TABLE_WRAP,
   DASHBOARD_TH_STICKY_SOFT_COMFORTABLE,
   DASHBOARD_THEAD_STICKY,
 } from '@/lib/dashboard-sticky-table-classes'
@@ -499,7 +500,7 @@ export function DashboardClient({
       )}
 
       {/* ── LINE SUMMARY TABLE ── */}
-      <section className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      <section className="rounded-2xl border border-slate-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
           <div>
             <h2 className="text-sm font-semibold text-slate-700">
@@ -520,7 +521,7 @@ export function DashboardClient({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={DASHBOARD_TABLE_WRAP}>
             <table className={DASHBOARD_TABLE_BASE}>
               <thead className={DASHBOARD_THEAD_STICKY}>
                 <tr>
