@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
   const lot = searchParams.get('lot')?.trim() || undefined
   const divisionIdParam = searchParams.get('divisionId')?.trim() || undefined
   const lineIdParam = searchParams.get('lineId')?.trim() || undefined
+  const partIdParam = searchParams.get('partId')?.trim() || undefined
   const takeParam = Number(searchParams.get('take') ?? '500')
   const take = isNaN(takeParam) || takeParam < 1 ? 500 : Math.min(takeParam, 1000)
 
@@ -90,6 +91,7 @@ export async function GET(req: NextRequest) {
       ...sessionDateWhere,
       ...(sessionLineWhere ? { line: sessionLineWhere } : {}),
     },
+    ...(partIdParam ? { partId: partIdParam } : {}),
     ...(lot ? { lotNumber: { contains: lot, mode: 'insensitive' } } : {}),
   }
 

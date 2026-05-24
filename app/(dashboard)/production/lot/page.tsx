@@ -12,7 +12,7 @@ export default async function LotPage() {
   const initialDate = formatThaiDateUTCISO(today)
   const initialMonth = initialDate.slice(0, 7) // YYYY-MM
 
-  const [divisions, lines] = await Promise.all([
+  const [divisions, lines, parts] = await Promise.all([
     prisma.division.findMany({
       where: { isActive: true },
       select: { id: true, divisionCode: true, divisionName: true },
@@ -33,6 +33,11 @@ export default async function LotPage() {
       },
       orderBy: { lineCode: 'asc' },
     }),
+    prisma.part.findMany({
+      where: { isActive: true },
+      select: { id: true, partSamco: true, partNo: true, partName: true },
+      orderBy: { partSamco: 'asc' },
+    }),
   ])
 
   return (
@@ -40,6 +45,7 @@ export default async function LotPage() {
       userRole={session.user?.role}
       divisions={JSON.parse(JSON.stringify(divisions))}
       lines={JSON.parse(JSON.stringify(lines))}
+      parts={JSON.parse(JSON.stringify(parts))}
       initialDate={initialDate}
       initialMonth={initialMonth}
     />

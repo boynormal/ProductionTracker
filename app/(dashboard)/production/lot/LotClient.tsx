@@ -38,10 +38,18 @@ interface Line {
   section?: { id: string; division?: { id: string } | null } | null
 }
 
+interface Part {
+  id: string
+  partSamco: number
+  partNo: string
+  partName: string
+}
+
 interface Props {
   userRole?: string
   divisions: Division[]
   lines: Line[]
+  parts: Part[]
   initialDate: string
   initialMonth: string
 }
@@ -70,6 +78,7 @@ function buildSWRKey(
   selectedMonth: string,
   divisionId: string,
   lineId: string,
+  partId: string,
   lotSearch: string,
 ): string {
   const params = new URLSearchParams({ mode })
@@ -77,11 +86,12 @@ function buildSWRKey(
   else params.set('month', selectedMonth)
   if (divisionId) params.set('divisionId', divisionId)
   if (lineId) params.set('lineId', lineId)
+  if (partId) params.set('partId', partId)
   if (lotSearch.trim()) params.set('lot', lotSearch.trim())
   return `/api/production/lot?${params.toString()}`
 }
 
-export function LotClient({ divisions, lines, initialDate, initialMonth }: Props) {
+export function LotClient({ divisions, lines, parts, initialDate, initialMonth }: Props) {
   const { locale } = useI18n()
 
   const [mode, setMode] = useState<Mode>('day')
@@ -89,10 +99,11 @@ export function LotClient({ divisions, lines, initialDate, initialMonth }: Props
   const [selectedMonth, setSelectedMonth] = useState(initialMonth)
   const [divisionId, setDivisionId] = useState('')
   const [lineId, setLineId] = useState('')
+  const [partId, setPartId] = useState('')
   const [lotSearch, setLotSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
 
-  const swrKey = buildSWRKey(mode, selectedDate, selectedMonth, divisionId, lineId, lotSearch)
+  const swrKey = buildSWRKey(mode, selectedDate, selectedMonth, divisionId, lineId, partId, lotSearch)
   const { data, error, isLoading } = useSWR(swrKey, fetcher, { keepPreviousData: true })
 
   const records: any[] = Array.isArray(data?.data) ? data.data : []
@@ -243,6 +254,26 @@ export function LotClient({ divisions, lines, initialDate, initialMonth }: Props
             {filteredLines.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.lineCode}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Part */}
+        <div className="w-[13rem] shrink-0">
+          <label className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500">
+            <Package size={12} className="text-slate-400" />
+            {locale === 'th' ? 'Part' : 'Part'}
+          </label>
+          <select
+            value={partId}
+            onChange={(e) => setPartId(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="">{locale === 'th' ? 'ทุก Part' : 'All parts'}</option>
+            {parts.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.partSamco} — {p.partName}
               </option>
             ))}
           </select>
