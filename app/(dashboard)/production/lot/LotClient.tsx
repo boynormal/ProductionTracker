@@ -57,9 +57,50 @@ interface Props {
 }
 
 interface LotResponse {
-  data?: any[]
+  data?: LotRecord[]
   total?: number
   hasMore?: boolean
+}
+
+interface LotRecord {
+  id: string
+  hourSlot: number
+  okQty: number
+  lotNumber?: string | null
+  remark?: string | null
+  session?: {
+    reportingDate?: string | null
+    sessionDate?: string | null
+    shiftType?: string | null
+    line?: { lineCode?: string | null } | null
+    machine?: { mcNo?: string | null } | null
+  } | null
+  part?: {
+    partSamco?: number | null
+    partName?: string | null
+    customer?: { customerCode?: string | null } | null
+  } | null
+  operator?: {
+    employeeCode?: string | null
+    firstName?: string | null
+    lastName?: string | null
+  } | null
+  breakdownLogs?: Array<{
+    id: string
+    breakTimeMin: number
+    problemDetail?: string | null
+    actionTaken?: string | null
+    breakdownStart?: string | null
+    breakdownEnd?: string | null
+    problemCategory?: { code?: string | null; name?: string | null } | null
+  }>
+  ngLogs?: Array<{
+    id: string
+    ngQty: number
+    problemDetail?: string | null
+    actionTaken?: string | null
+    problemCategory?: { code?: string | null; name?: string | null } | null
+  }>
 }
 
 function formatDateDisplay(dateStr: string | null | undefined, locale: string) {
@@ -134,7 +175,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
   )
 
   const pages = data ?? []
-  const records: any[] = pages.flatMap((page) => (Array.isArray(page?.data) ? page.data : []))
+  const records: LotRecord[] = pages.flatMap((page) => (Array.isArray(page?.data) ? page.data : []))
   const firstPage = pages[0]
   const lastPage = pages[pages.length - 1]
   const total = typeof firstPage?.total === 'number' ? firstPage.total : records.length
@@ -411,9 +452,9 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                 </tr>
               </thead>
               <tbody>
-              {records.map((rec: any) => {
-                const ngTotal = (rec.ngLogs ?? []).reduce((s: number, ng: any) => s + (ng.ngQty || 0), 0)
-                const bdTotal = (rec.breakdownLogs ?? []).reduce((s: number, bd: any) => s + (bd.breakTimeMin || 0), 0)
+              {records.map((rec) => {
+                const ngTotal = (rec.ngLogs ?? []).reduce((s, ng) => s + (ng.ngQty || 0), 0)
+                const bdTotal = (rec.breakdownLogs ?? []).reduce((s, bd) => s + (bd.breakTimeMin || 0), 0)
                 const operatorName = [rec.operator?.firstName, rec.operator?.lastName].filter(Boolean).join(' ')
                 const reportingDate = rec.session?.reportingDate ?? rec.session?.sessionDate
                 const isNight = rec.session?.shiftType === 'NIGHT'
@@ -544,7 +585,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                                   Breakdown ({rec.breakdownLogs.length} {locale === 'th' ? 'ครั้ง' : 'events'})
                                 </p>
                                 <div className="space-y-1.5">
-                                  {rec.breakdownLogs.map((bd: any) => (
+                                  {rec.breakdownLogs.map((bd) => (
                                     <div key={bd.id} className="rounded-lg border border-red-100 bg-white px-3 py-2 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-semibold text-slate-700">
@@ -579,7 +620,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                                   NG ({rec.ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
                                 </p>
                                 <div className="space-y-1.5">
-                                  {rec.ngLogs.map((ng: any) => (
+                                  {rec.ngLogs.map((ng) => (
                                     <div key={ng.id} className="rounded-lg border border-orange-100 bg-white px-3 py-2 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-semibold text-slate-700">
