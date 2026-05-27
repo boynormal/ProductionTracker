@@ -11,6 +11,8 @@ import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 
 type Mode = 'day' | 'month'
 const WITH_LEGACY = false
+const DEFAULT_TAKE = 500
+const MAX_TAKE = 1000
 
 function monthToRange(monthStr: string): { from: Date; toExclusive: Date } | null {
   const m = /^(\d{4})-(\d{2})$/.exec(monthStr.trim())
@@ -34,8 +36,12 @@ export async function GET(req: NextRequest) {
   const divisionIdParam = searchParams.get('divisionId')?.trim() || undefined
   const lineIdParam = searchParams.get('lineId')?.trim() || undefined
   const partIdParam = searchParams.get('partId')?.trim() || undefined
-  const takeParam = Number(searchParams.get('take') ?? '500')
-  const take = isNaN(takeParam) || takeParam < 1 ? 500 : Math.min(takeParam, 1000)
+  const takeParam = Number(searchParams.get('take') ?? String(DEFAULT_TAKE))
+  const skipParam = Number(searchParams.get('skip') ?? '0')
+  const take = !Number.isFinite(takeParam) || takeParam < 1
+    ? DEFAULT_TAKE
+    : Math.min(Math.floor(takeParam), MAX_TAKE)
+  const skip = !Number.isFinite(skipParam) || skipParam < 0 ? 0 : Math.floor(skipParam)
 
   // ต้องมีอย่างน้อยหนึ่งตัวกรอง: date/month หรือ lot
   const hasDateFilter = searchParams.has('date') || searchParams.has('month') || mode === 'day'
@@ -95,37 +101,44 @@ export async function GET(req: NextRequest) {
     ...(lot ? { lotNumber: { contains: lot, mode: 'insensitive' } } : {}),
   }
 
-  const records = await prisma.hourlyRecord.findMany({
-    where,
-    include: {
-      session: {
-        include: {
-          line: { select: { id: true, lineCode: true, lineName: true } },
-          machine: { select: { id: true, mcNo: true, brand: true } },
+  const [records, total] = await prisma.$transaction([
+    prisma.hourlyRecord.findMany({
+      where,
+      include: {
+        session: {
+          include: {
+            line: { select: { id: true, lineCode: true, lineName: true } },
+            machine: { select: { id: true, mcNo: true, brand: true } },
+          },
+        },
+        part: {
+          include: {
+            customer: { select: { id: true, customerCode: true, customerName: true } },
+          },
+        },
+        operator: {
+          select: { id: true, employeeCode: true, firstName: true, lastName: true },
+        },
+        breakdownLogs: {
+          include: { problemCategory: { select: { id: true, code: true, name: true } } },
+        },
+        ngLogs: {
+          include: { problemCategory: { select: { id: true, code: true, name: true } } },
         },
       },
-      part: {
-        include: {
-          customer: { select: { id: true, customerCode: true, customerName: true } },
-        },
-      },
-      operator: {
-        select: { id: true, employeeCode: true, firstName: true, lastName: true },
-      },
-      breakdownLogs: {
-        include: { problemCategory: { select: { id: true, code: true, name: true } } },
-      },
-      ngLogs: {
-        include: { problemCategory: { select: { id: true, code: true, name: true } } },
-      },
-    },
-    orderBy: [{ session: { reportingDate: 'desc' } }, { session: { shiftType: 'asc' } }, { hourSlot: 'asc' }],
-    take,
-  })
+      orderBy: [{ session: { reportingDate: 'desc' } }, { session: { shiftType: 'asc' } }, { hourSlot: 'asc' }],
+      skip,
+      take,
+    }),
+    prisma.hourlyRecord.count({ where }),
+  ])
 
   return NextResponse.json({
     data: records,
-    total: records.length,
+    total,
+    skip,
+    take,
+    hasMore: skip + records.length < total,
     from: from.toISOString().slice(0, 10),
     to: new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   })
