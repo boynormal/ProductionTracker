@@ -453,8 +453,10 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
               </thead>
               <tbody>
               {records.map((rec) => {
-                const ngTotal = (rec.ngLogs ?? []).reduce((s, ng) => s + (ng.ngQty || 0), 0)
-                const bdTotal = (rec.breakdownLogs ?? []).reduce((s, bd) => s + (bd.breakTimeMin || 0), 0)
+                const breakdownLogs = rec.breakdownLogs ?? []
+                const ngLogs = rec.ngLogs ?? []
+                const ngTotal = ngLogs.reduce((s, ng) => s + (ng.ngQty || 0), 0)
+                const bdTotal = breakdownLogs.reduce((s, bd) => s + (bd.breakTimeMin || 0), 0)
                 const operatorName = [rec.operator?.firstName, rec.operator?.lastName].filter(Boolean).join(' ')
                 const reportingDate = rec.session?.reportingDate ?? rec.session?.sessionDate
                 const isNight = rec.session?.shiftType === 'NIGHT'
@@ -462,7 +464,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                   ? (locale === 'th' ? 'กะดึก' : 'Night')
                   : (locale === 'th' ? 'กะเช้า' : 'Day')
                 const isExpanded = expandedIds.has(rec.id)
-                const hasDetail = (rec.breakdownLogs?.length > 0 || rec.ngLogs?.length > 0)
+                const hasDetail = (breakdownLogs.length > 0 || ngLogs.length > 0)
                 const colSpan = showLotCol ? 10 : 9
 
                 return (
@@ -579,13 +581,13 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                         <td colSpan={colSpan} className="px-8 py-3">
                           <div className="grid gap-4 sm:grid-cols-2">
                             {/* Breakdown detail */}
-                            {rec.breakdownLogs?.length > 0 && (
+                            {breakdownLogs.length > 0 && (
                               <div>
                                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-red-700">
-                                  Breakdown ({rec.breakdownLogs.length} {locale === 'th' ? 'ครั้ง' : 'events'})
+                                  Breakdown ({breakdownLogs.length} {locale === 'th' ? 'ครั้ง' : 'events'})
                                 </p>
                                 <div className="space-y-1.5">
-                                  {rec.breakdownLogs.map((bd) => (
+                                  {breakdownLogs.map((bd) => (
                                     <div key={bd.id} className="rounded-lg border border-red-100 bg-white px-3 py-2 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-semibold text-slate-700">
@@ -614,13 +616,13 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                             )}
 
                             {/* NG detail */}
-                            {rec.ngLogs?.length > 0 && (
+                            {ngLogs.length > 0 && (
                               <div>
                                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-orange-700">
-                                  NG ({rec.ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
+                                  NG ({ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
                                 </p>
                                 <div className="space-y-1.5">
-                                  {rec.ngLogs.map((ng) => (
+                                  {ngLogs.map((ng) => (
                                     <div key={ng.id} className="rounded-lg border border-orange-100 bg-white px-3 py-2 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-semibold text-slate-700">
