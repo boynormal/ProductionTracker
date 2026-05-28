@@ -19,7 +19,7 @@ import {
   formatInstantBangkok,
 } from '@/lib/time-utils'
 import { buildBreakdownIntervalsFromSlotMinutes } from '@/lib/utils/breakdown-datetime'
-import { Plus, Minus, Factory, Clock, CheckCircle2, XCircle, Wrench, Loader2, Coffee, Search, User, ChevronsUpDown } from 'lucide-react'
+import { Plus, Minus, Factory, Clock, CheckCircle2, XCircle, Wrench, Loader2, Coffee, Search, User, ChevronsUpDown, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
@@ -213,6 +213,99 @@ function getInitialSectionId(
 
 
 
+/** Custom dropdown — แทน native <select> เพื่อหลีกเลี่ยง Chrome WebView bug
+ *  ที่ <select> ใน overflow-scroll container (LINE browser บน Android) tap ไม่ได้เมื่อ scroll ลงมาแล้ว */
+function FieldSelectDropdown({
+  value,
+  onChange,
+  options,
+  placeholder,
+  accentColor = 'red',
+  disabled,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+  placeholder: string
+  accentColor?: 'red' | 'orange'
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleOutside(e: MouseEvent | TouchEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('touchstart', handleOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('touchstart', handleOutside)
+    }
+  }, [open])
+
+  const selectedOption = options.find((o) => o.value === value)
+  const focusBorderCls = accentColor === 'red' ? 'border-red-400' : 'border-orange-400'
+  const activeBgCls = accentColor === 'red' ? 'bg-red-50 text-red-900' : 'bg-orange-50 text-orange-900'
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((prev) => !prev)}
+        className={cn(
+          'flex w-full items-center justify-between rounded border border-slate-200 bg-white px-3 py-3 text-sm transition-colors',
+          open && focusBorderCls,
+          disabled && 'cursor-not-allowed opacity-50',
+        )}
+      >
+        <span className={cn('truncate text-left', !selectedOption && 'text-slate-400')}>
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <ChevronDown
+          size={14}
+          className={cn('ml-2 shrink-0 text-slate-400 transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          className="absolute left-0 z-[60] mt-1 min-w-full max-h-52 list-none overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {options.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-slate-400">{placeholder}</li>
+          ) : (
+            options.map((opt) => (
+              <li key={opt.value} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={value === opt.value}
+                  onClick={() => {
+                    onChange(opt.value)
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    'w-full px-3 py-2.5 text-left text-sm transition-colors hover:bg-slate-50',
+                    value === opt.value && activeBgCls,
+                  )}
+                >
+                  {opt.label}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function RecordClient({
   machines,
   problemCategories,
@@ -394,6 +487,7 @@ export function RecordClient({
   const watchHasBreakdown = watch('hasBreakdown')
   const watchHasNg        = watch('hasNg')
   const watchBreakdown    = watch('breakdown')
+  const watchNg           = watch('ng')
 
   const recordDateIso = useMemo(() => {
     if (sessionData?.sessionDate) {
@@ -1870,20 +1964,16 @@ export function RecordClient({
                   <>
               <div>
                 <label className="text-sm text-slate-500">{t('machine')}</label>
-                <select
-                  {...register(`breakdown.${i}.machineId`)}
-                  className="w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400"
-                >
-                  <option value="">
-                    {locale === 'th' ? '— เลือกเครื่องจักร —' : '— Select machine —'}
-                  </option>
-                  {machinesOnLine.map((m: any) => (
-                    <option key={m.id} value={m.id}>
-                      {m.mcNo}
-                      {m.mcName ? ` — ${m.mcName}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <FieldSelectDropdown
+                  value={watchBreakdown?.[i]?.machineId ?? ''}
+                  onChange={(val) => setValue(`breakdown.${i}.machineId`, val, { shouldValidate: true })}
+                  options={machinesOnLine.map((m: any) => ({
+                    value: m.id,
+                    label: m.mcNo + (m.mcName ? ` — ${m.mcName}` : ''),
+                  }))}
+                  placeholder={locale === 'th' ? '— เลือกเครื่องจักร —' : '— Select machine —'}
+                  accentColor="red"
+                />
                 {breakdownError?.machineId?.message ? (
                   <p className="mt-1 text-sm text-red-500">{String(breakdownError.machineId.message)}</p>
                 ) : null}
@@ -1909,13 +1999,13 @@ export function RecordClient({
               </div>
               <div>
                   <label className="text-sm text-slate-500">{t('cause')}</label>
-                  <select {...register(`breakdown.${i}.problemCategoryId`)}
-                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-red-400">
-                    <option value="">{t('recordSelectCause')}</option>
-                    {breakdownCategories.map(c => (
-                      <option key={c.id} value={c.id}>{c.code} / {c.name}</option>
-                    ))}
-                  </select>
+                  <FieldSelectDropdown
+                    value={watchBreakdown?.[i]?.problemCategoryId ?? ''}
+                    onChange={(val) => setValue(`breakdown.${i}.problemCategoryId`, val, { shouldValidate: true })}
+                    options={breakdownCategories.map((c) => ({ value: c.id, label: `${c.code} / ${c.name}` }))}
+                    placeholder={t('recordSelectCause')}
+                    accentColor="red"
+                  />
                   {breakdownError?.problemCategoryId?.message ? (
                     <p className="mt-1 text-sm text-red-500">{String(breakdownError.problemCategoryId.message)}</p>
                   ) : null}
@@ -1970,20 +2060,16 @@ export function RecordClient({
             <div key={field.id} className="mb-3 rounded-lg border border-orange-100 bg-orange-50 p-3 space-y-2">
               <div>
                 <label className="text-sm text-slate-500">{t('machine')}</label>
-                <select
-                  {...register(`ng.${i}.machineId`)}
-                  className="w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400"
-                >
-                  <option value="">
-                    {locale === 'th' ? '— เลือกเครื่องจักร —' : '— Select machine —'}
-                  </option>
-                  {machinesOnLine.map((m: any) => (
-                    <option key={m.id} value={m.id}>
-                      {m.mcNo}
-                      {m.mcName ? ` — ${m.mcName}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <FieldSelectDropdown
+                  value={watchNg?.[i]?.machineId ?? ''}
+                  onChange={(val) => setValue(`ng.${i}.machineId`, val, { shouldValidate: true })}
+                  options={machinesOnLine.map((m: any) => ({
+                    value: m.id,
+                    label: m.mcNo + (m.mcName ? ` — ${m.mcName}` : ''),
+                  }))}
+                  placeholder={locale === 'th' ? '— เลือกเครื่องจักร —' : '— Select machine —'}
+                  accentColor="orange"
+                />
                 {errors.ng?.[i]?.machineId?.message ? (
                   <p className="mt-1 text-sm text-red-500">{String(errors.ng[i]!.machineId!.message)}</p>
                 ) : null}
@@ -1996,13 +2082,13 @@ export function RecordClient({
                 </div>
                 <div>
                   <label className="text-sm text-slate-500">{t('recordNgCause')}</label>
-                  <select {...register(`ng.${i}.problemCategoryId`)}
-                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400">
-                    <option value="">{t('recordSelect')}</option>
-                    {ngCategories.map(c => (
-                      <option key={c.id} value={c.id}>{c.code} / {c.name}</option>
-                    ))}
-                  </select>
+                  <FieldSelectDropdown
+                    value={watchNg?.[i]?.problemCategoryId ?? ''}
+                    onChange={(val) => setValue(`ng.${i}.problemCategoryId`, val, { shouldValidate: true })}
+                    options={ngCategories.map((c) => ({ value: c.id, label: `${c.code} / ${c.name}` }))}
+                    placeholder={t('recordSelect')}
+                    accentColor="orange"
+                  />
                 </div>
               </div>
               <input {...register(`ng.${i}.problemDetail`)} placeholder={t('detailsMore')}
