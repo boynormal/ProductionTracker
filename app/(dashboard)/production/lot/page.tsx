@@ -1,15 +1,21 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { getThaiTodayUTC, formatThaiDateUTCISO } from '@/lib/time-utils'
+import { getThaiReportingDateUTC, formatThaiDateUTCISO } from '@/lib/time-utils'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { LotClient } from './LotClient'
 
 export default async function LotPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const today = getThaiTodayUTC()
-  const initialDate = formatThaiDateUTCISO(today)
+  const canViewLot = await checkPermissionForSession(session, 'menu.production.lot', {
+    menuPath: '/production/lot',
+  })
+  if (!canViewLot) redirect('/')
+
+  const reportingToday = getThaiReportingDateUTC()
+  const initialDate = formatThaiDateUTCISO(reportingToday)
   const initialMonth = initialDate.slice(0, 7) // YYYY-MM
 
   const [divisions, lines, parts] = await Promise.all([
