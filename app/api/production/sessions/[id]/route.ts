@@ -6,10 +6,48 @@ import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { sessionUpdateSchema } from '@/lib/validations/production'
 import { auditUserIdFromSession } from '@/lib/audit-user'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+import type { PermissionCheckContext } from '@/lib/permissions/scope-match'
 
 type Params = { params: Promise<{ id: string }> }
 
 const REOPEN_SHIFT_ROLES = new Set<UserRole>(['SUPERVISOR', 'MANAGER', 'ADMIN'])
+
+const SESSION_PERMISSION_INCLUDE = {
+  line: {
+    select: {
+      sectionId: true,
+      section: {
+        select: {
+          divisionId: true,
+          division: {
+            select: { departmentId: true },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.ProductionSessionInclude
+
+type SessionPermissionTarget = Prisma.ProductionSessionGetPayload<{
+  include: typeof SESSION_PERMISSION_INCLUDE
+}>
+
+function sessionPermissionContext(
+  req: NextRequest,
+  target: SessionPermissionTarget,
+): PermissionCheckContext {
+  const section = target.line.section
+
+  return {
+    apiPath: req.nextUrl.pathname,
+    departmentId: section?.division.departmentId ?? null,
+    divisionId: section?.divisionId ?? null,
+    sectionId: target.line.sectionId,
+    lineId: target.lineId,
+    machineId: target.machineId,
+    shiftType: target.shiftType,
+  }
+}
 
 export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await getOperatorContextFromApiRequest(req)
@@ -41,16 +79,24 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const canWrite = await checkPermissionForSession(session, 'api.production.session.write', { apiPath: req.nextUrl.pathname })
-  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
+  const existing = await prisma.productionSession.findUnique({
+    where: { id },
+    include: SESSION_PERMISSION_INCLUDE,
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canWrite = await checkPermissionForSession(
+    session,
+    'api.production.session.write',
+    sessionPermissionContext(req, existing),
+  )
+  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const body   = await req.json()
   const parsed = sessionUpdateSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-
-  const existing = await prisma.productionSession.findUnique({ where: { id } })
-  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const d = parsed.data
   const isReopenShift =
@@ -159,12 +205,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const canWrite = await checkPermissionForSession(session, 'api.production.session.write', { apiPath: req.nextUrl.pathname })
+
+  const { id } = await params
+  const existing = await prisma.productionSession.findUnique({
+    where: { id },
+    include: SESSION_PERMISSION_INCLUDE,
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canWrite = await checkPermissionForSession(
+    session,
+    'api.production.session.write',
+    sessionPermissionContext(req, existing),
+  )
   if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { id } = await params
   await prisma.ngLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
   await prisma.breakdownLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
   await prisma.modelChange.deleteMany({ where: { sessionId: id } })
