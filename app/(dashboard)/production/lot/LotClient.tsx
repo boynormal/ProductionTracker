@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import useSWR from 'swr'
+import useSWRInfinite from 'swr/infinite'
 import { useI18n } from '@/lib/i18n'
 import { cn } from '@/lib/utils/cn'
 import {
@@ -15,6 +15,8 @@ import {
   DASHBOARD_TH_STICKY_SOLID,
   DASHBOARD_THEAD_STICKY,
 } from '@/lib/dashboard-sticky-table-classes'
+
+const PAGE_SIZE = 500
 
 const fetcher = async (url: string) => {
   const r = await fetch(url)
@@ -54,6 +56,53 @@ interface Props {
   initialMonth: string
 }
 
+interface LotResponse {
+  data?: LotRecord[]
+  total?: number
+  hasMore?: boolean
+}
+
+interface LotRecord {
+  id: string
+  hourSlot: number
+  okQty: number
+  lotNumber?: string | null
+  remark?: string | null
+  session?: {
+    reportingDate?: string | null
+    sessionDate?: string | null
+    shiftType?: string | null
+    line?: { lineCode?: string | null } | null
+    machine?: { mcNo?: string | null } | null
+  } | null
+  part?: {
+    partSamco?: number | null
+    partName?: string | null
+    customer?: { customerCode?: string | null } | null
+  } | null
+  operator?: {
+    employeeCode?: string | null
+    firstName?: string | null
+    lastName?: string | null
+  } | null
+  breakdownLogs?: Array<{
+    id: string
+    breakTimeMin: number
+    problemDetail?: string | null
+    actionTaken?: string | null
+    breakdownStart?: string | null
+    breakdownEnd?: string | null
+    problemCategory?: { code?: string | null; name?: string | null } | null
+  }>
+  ngLogs?: Array<{
+    id: string
+    ngQty: number
+    problemDetail?: string | null
+    actionTaken?: string | null
+    problemCategory?: { code?: string | null; name?: string | null } | null
+  }>
+}
+
 function formatDateDisplay(dateStr: string | null | undefined, locale: string) {
   if (!dateStr) return '—'
   try {
@@ -80,6 +129,8 @@ function buildSWRKey(
   lineId: string,
   partId: string,
   lotSearch: string,
+  skip: number,
+  take: number,
 ): string {
   const params = new URLSearchParams({ mode })
   if (mode === 'day') params.set('date', selectedDate)
@@ -88,6 +139,8 @@ function buildSWRKey(
   if (lineId) params.set('lineId', lineId)
   if (partId) params.set('partId', partId)
   if (lotSearch.trim()) params.set('lot', lotSearch.trim())
+  params.set('skip', String(skip))
+  params.set('take', String(take))
   return `/api/production/lot?${params.toString()}`
 }
 
@@ -103,10 +156,33 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
   const [lotSearch, setLotSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
 
-  const swrKey = buildSWRKey(mode, selectedDate, selectedMonth, divisionId, lineId, partId, lotSearch)
-  const { data, error, isLoading } = useSWR(swrKey, fetcher, { keepPreviousData: true })
+  const { data, error, isLoading, isValidating, size, setSize } = useSWRInfinite<LotResponse>(
+    (pageIndex, previousPageData) => {
+      if (previousPageData && !previousPageData.hasMore) return null
+      return buildSWRKey(
+        mode,
+        selectedDate,
+        selectedMonth,
+        divisionId,
+        lineId,
+        partId,
+        lotSearch,
+        pageIndex * PAGE_SIZE,
+        PAGE_SIZE,
+      )
+    },
+    fetcher,
+  )
 
-  const records: any[] = Array.isArray(data?.data) ? data.data : []
+  const pages = data ?? []
+  const records: LotRecord[] = pages.flatMap((page) => (Array.isArray(page?.data) ? page.data : []))
+  const firstPage = pages[0]
+  const lastPage = pages[pages.length - 1]
+  const total = typeof firstPage?.total === 'number' ? firstPage.total : records.length
+  const hasMore = Boolean(lastPage?.hasMore)
+  const isLoadingInitial = isLoading && records.length === 0
+  const isLoadingMore = isLoadingInitial || (size > 0 && typeof pages[size - 1] === 'undefined')
+  const isRefreshing = isValidating && !isLoadingMore
 
   const filteredLines = useMemo(() => {
     if (!divisionId) return lines
@@ -304,17 +380,21 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
           <CalendarDays size={13} className="text-slate-400" />
           <span>{periodLabel}</span>
         </div>
-        {isLoading && (
+        {(isLoadingInitial || isRefreshing) && (
           <span className="flex items-center gap-1 text-xs text-blue-600">
             <Loader2 size={12} className="animate-spin" />
-            {locale === 'th' ? 'กำลังโหลด...' : 'Loading...'}
+            {isLoadingInitial
+              ? (locale === 'th' ? 'กำลังโหลด...' : 'Loading...')
+              : (locale === 'th' ? 'กำลังอัปเดต...' : 'Refreshing...')}
           </span>
         )}
-        {!isLoading && !error && data && (
+        {!isLoadingInitial && !error && firstPage && (
           <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
             {records.length.toLocaleString()} {locale === 'th' ? 'รายการ' : 'records'}
-            {records.length >= 500 && (
-              <span className="ml-1 text-amber-600">(max 500)</span>
+            {total > records.length && (
+              <span className="ml-1 text-amber-600">
+                / {total.toLocaleString()}
+              </span>
             )}
           </span>
         )}
@@ -328,7 +408,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
       )}
 
       {/* ── Table ── */}
-      {!error && records.length === 0 && !isLoading && data ? (
+      {!error && records.length === 0 && !isLoadingInitial && firstPage ? (
         <div className="rounded-2xl border border-slate-100 bg-white py-16 text-center shadow-sm">
           <Package size={40} className="mx-auto mb-3 text-slate-200" />
           <p className="text-sm text-slate-400">
@@ -336,44 +416,47 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
           </p>
         </div>
       ) : records.length > 0 ? (
-        <div className={cn(DASHBOARD_TABLE_WRAP, isLoading && 'opacity-60 pointer-events-none')}>
-          <table className="w-full min-w-[60rem] border-separate border-spacing-0 bg-white text-sm">
-            <thead className={DASHBOARD_THEAD_STICKY}>
-              <tr>
-                <th className={DASHBOARD_TH_STICKY_SOLID} style={{ width: 32 }}></th>
-                <th className={DASHBOARD_TH_STICKY_SOLID}>
-                  <span className="flex items-center gap-1"><CalendarDays size={11} />{locale === 'th' ? 'วันที่ / กะ' : 'Date / Shift'}</span>
-                </th>
-                <th className={DASHBOARD_TH_STICKY_SOLID}>
-                  <span className="flex items-center gap-1"><Factory size={11} />{locale === 'th' ? 'สาย / Slot' : 'Line / Slot'}</span>
-                </th>
-                <th className={DASHBOARD_TH_STICKY_SOLID}>
-                  <span className="flex items-center gap-1"><Package size={11} />Part</span>
-                </th>
-                {showLotCol && (
+        <>
+          <div className={cn(DASHBOARD_TABLE_WRAP, isRefreshing && 'opacity-60 pointer-events-none')}>
+            <table className="w-full min-w-[60rem] border-separate border-spacing-0 bg-white text-sm">
+              <thead className={DASHBOARD_THEAD_STICKY}>
+                <tr>
+                  <th className={DASHBOARD_TH_STICKY_SOLID} style={{ width: 32 }}></th>
                   <th className={DASHBOARD_TH_STICKY_SOLID}>
-                    <span className="flex items-center gap-1"><Tag size={11} />Lot</span>
+                    <span className="flex items-center gap-1"><CalendarDays size={11} />{locale === 'th' ? 'วันที่ / กะ' : 'Date / Shift'}</span>
                   </th>
-                )}
-                <th className={DASHBOARD_TH_STICKY_SOLID}>
-                  <span className="flex items-center gap-1"><User size={11} />{locale === 'th' ? 'พนักงาน' : 'Operator'}</span>
-                </th>
-                <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-right')}>
-                  <span className="flex items-center justify-end gap-1"><CheckCircle2 size={11} />OK</span>
-                </th>
-                <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-right')}>
-                  <span className="flex items-center justify-end gap-1"><XCircle size={11} />NG</span>
-                </th>
-                <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-center')}>
-                  <span className="flex items-center justify-center gap-1"><Wrench size={11} />BD</span>
-                </th>
-                <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'หมายเหตุ' : 'Remark'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((rec: any) => {
-                const ngTotal = (rec.ngLogs ?? []).reduce((s: number, ng: any) => s + (ng.ngQty || 0), 0)
-                const bdTotal = (rec.breakdownLogs ?? []).reduce((s: number, bd: any) => s + (bd.breakTimeMin || 0), 0)
+                  <th className={DASHBOARD_TH_STICKY_SOLID}>
+                    <span className="flex items-center gap-1"><Factory size={11} />{locale === 'th' ? 'สาย / Slot' : 'Line / Slot'}</span>
+                  </th>
+                  <th className={DASHBOARD_TH_STICKY_SOLID}>
+                    <span className="flex items-center gap-1"><Package size={11} />Part</span>
+                  </th>
+                  {showLotCol && (
+                    <th className={DASHBOARD_TH_STICKY_SOLID}>
+                      <span className="flex items-center gap-1"><Tag size={11} />Lot</span>
+                    </th>
+                  )}
+                  <th className={DASHBOARD_TH_STICKY_SOLID}>
+                    <span className="flex items-center gap-1"><User size={11} />{locale === 'th' ? 'พนักงาน' : 'Operator'}</span>
+                  </th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-right')}>
+                    <span className="flex items-center justify-end gap-1"><CheckCircle2 size={11} />OK</span>
+                  </th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-right')}>
+                    <span className="flex items-center justify-end gap-1"><XCircle size={11} />NG</span>
+                  </th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-center')}>
+                    <span className="flex items-center justify-center gap-1"><Wrench size={11} />BD</span>
+                  </th>
+                  <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'หมายเหตุ' : 'Remark'}</th>
+                </tr>
+              </thead>
+              <tbody>
+              {records.map((rec) => {
+                const breakdownLogs = rec.breakdownLogs ?? []
+                const ngLogs = rec.ngLogs ?? []
+                const ngTotal = ngLogs.reduce((s, ng) => s + (ng.ngQty || 0), 0)
+                const bdTotal = breakdownLogs.reduce((s, bd) => s + (bd.breakTimeMin || 0), 0)
                 const operatorName = [rec.operator?.firstName, rec.operator?.lastName].filter(Boolean).join(' ')
                 const reportingDate = rec.session?.reportingDate ?? rec.session?.sessionDate
                 const isNight = rec.session?.shiftType === 'NIGHT'
@@ -381,7 +464,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                   ? (locale === 'th' ? 'กะดึก' : 'Night')
                   : (locale === 'th' ? 'กะเช้า' : 'Day')
                 const isExpanded = expandedIds.has(rec.id)
-                const hasDetail = (rec.breakdownLogs?.length > 0 || rec.ngLogs?.length > 0)
+                const hasDetail = (breakdownLogs.length > 0 || ngLogs.length > 0)
                 const colSpan = showLotCol ? 10 : 9
 
                 return (
@@ -498,13 +581,13 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                         <td colSpan={colSpan} className="px-8 py-3">
                           <div className="grid gap-4 sm:grid-cols-2">
                             {/* Breakdown detail */}
-                            {rec.breakdownLogs?.length > 0 && (
+                            {breakdownLogs.length > 0 && (
                               <div>
                                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-red-700">
-                                  Breakdown ({rec.breakdownLogs.length} {locale === 'th' ? 'ครั้ง' : 'events'})
+                                  Breakdown ({breakdownLogs.length} {locale === 'th' ? 'ครั้ง' : 'events'})
                                 </p>
                                 <div className="space-y-1.5">
-                                  {rec.breakdownLogs.map((bd: any) => (
+                                  {breakdownLogs.map((bd) => (
                                     <div key={bd.id} className="rounded-lg border border-red-100 bg-white px-3 py-2 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-semibold text-slate-700">
@@ -533,13 +616,13 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                             )}
 
                             {/* NG detail */}
-                            {rec.ngLogs?.length > 0 && (
+                            {ngLogs.length > 0 && (
                               <div>
                                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-orange-700">
-                                  NG ({rec.ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
+                                  NG ({ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
                                 </p>
                                 <div className="space-y-1.5">
-                                  {rec.ngLogs.map((ng: any) => (
+                                  {ngLogs.map((ng) => (
                                     <div key={ng.id} className="rounded-lg border border-orange-100 bg-white px-3 py-2 text-xs">
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="font-semibold text-slate-700">
@@ -569,9 +652,23 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                   </React.Fragment>
                 )
               })}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+          {hasMore && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setSize(size + 1)}
+                disabled={isLoadingMore}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoadingMore && <Loader2 size={15} className="animate-spin" />}
+                {locale === 'th' ? 'โหลดข้อมูลเพิ่มเติม' : 'Load more records'}
+              </button>
+            </div>
+          )}
+        </>
       ) : null}
     </div>
   )
