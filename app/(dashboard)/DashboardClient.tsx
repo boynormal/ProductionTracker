@@ -466,9 +466,9 @@ export function DashboardClient({
             sub={locale === 'th' ? 'ชิ้น' : 'pcs'}
             icon={<CheckCircle2 size={18} />} accent="green" />
           <MetricCard
-            label="NG"
+            label="Defect"
             value={totalNg.toLocaleString()}
-            sub={locale === 'th' ? 'ชิ้น NG' : 'pcs NG'}
+            sub={locale === 'th' ? 'ชิ้น Defect' : 'pcs Defect'}
             icon={<XCircle size={18} />} accent="red" />
           <KpiCard
             label={locale === 'th' ? '% PPH (หลังหัก BD)' : '% PPH (ex-BD)'}
@@ -557,14 +557,14 @@ export function DashboardClient({
                   <SortTh
                     label="% PPH"
                     title={locale === 'th'
-                      ? '(OK+NG จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — หักนาที Breakdown ต่อชั่วโมง'
-                      : '(OK+NG actual) ÷ Σ(target × netMin/60) × 100 — breakdown minutes deducted per slot'}
+                      ? '(OK+Defect จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — หักนาที Breakdown ต่อชั่วโมง'
+                      : '(OK+Defect actual) ÷ Σ(target × netMin/60) × 100 — breakdown minutes deducted per slot'}
                     col="lPph" sortCol={sortCol} sortDir={sortDir} onSort={(c) => handleSortCol(c as SortCol)}
                     className={DASHBOARD_TH_STICKY_SOFT_COMFORTABLE}
                   />
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-right')}>{t('recordedHours')}</th>
                   <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>{t('bdMin')}</th>
-                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>NG</th>
+                  <th className={cn(DASHBOARD_TH_STICKY_SOFT_COMFORTABLE, 'text-center')}>Defect</th>
                 </tr>
               </thead>
               <tbody>

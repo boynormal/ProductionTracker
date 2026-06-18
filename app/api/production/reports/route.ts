@@ -36,6 +36,8 @@ export async function GET(req: NextRequest) {
   const from = searchParams.get('from')
   const to = searchParams.get('to')
   const sectionId = searchParams.get('sectionId') || undefined
+  const divisionId = searchParams.get('divisionId') || undefined
+  const departmentId = searchParams.get('departmentId') || undefined
   const granRaw = searchParams.get('granularity') ?? 'day'
   const granularity: Granularity = granRaw === 'month' ? 'month' : 'day'
 
@@ -62,12 +64,34 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  // Resolve org hierarchy filter → most specific wins: section > division > department
+  let lineWhere: Record<string, unknown> = {}
+  if (sectionId) {
+    lineWhere = { line: { sectionId } }
+  } else if (divisionId) {
+    const divSections = await prisma.section.findMany({
+      where: { divisionId, isActive: true },
+      select: { id: true },
+    })
+    lineWhere = { line: { sectionId: { in: divSections.map((s) => s.id) } } }
+  } else if (departmentId) {
+    const deptDivisions = await prisma.division.findMany({
+      where: { departmentId, isActive: true },
+      select: { id: true },
+    })
+    const deptSections = await prisma.section.findMany({
+      where: { divisionId: { in: deptDivisions.map((d) => d.id) }, isActive: true },
+      select: { id: true },
+    })
+    lineWhere = { line: { sectionId: { in: deptSections.map((s) => s.id) } } }
+  }
+
   const records = await prisma.hourlyRecord.findMany({
     where: {
       session: {
         status: { in: [...REPORT_SESSION_STATUSES] },
         ...reportingDateRangeWhere(fromDate, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
-        ...(sectionId ? { line: { sectionId } } : {}),
+        ...lineWhere,
       },
     },
     select: {

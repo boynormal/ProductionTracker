@@ -823,8 +823,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         {canEditRecord ? (
           <p className="text-xs text-slate-400 mt-1">
             {locale === 'th'
-              ? 'หัวหน้างาน / วิศวกร / ผู้จัดการ / Admin: ขยายรายละเอียดสายก่อน แล้วคลิกช่องรายชั่วโมงเพื่อแก้ไข Part, OK, Breakdown, NG และหมายเหตุ'
-              : 'Supervisor / Engineer / Manager / Admin: expand a line first, then click an hourly cell to edit part, OK, breakdown, NG, and remark.'}
+              ? 'หัวหน้างาน / วิศวกร / ผู้จัดการ / Admin: ขยายรายละเอียดสายก่อน แล้วคลิกช่องรายชั่วโมงเพื่อแก้ไข Part, OK, Breakdown, Defect และหมายเหตุ'
+              : 'Supervisor / Engineer / Manager / Admin: expand a line first, then click an hourly cell to edit part, OK, breakdown, Defect, and remark.'}
           </p>
         ) : null}
         {canCloseSession ? (
@@ -968,7 +968,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
         </label>
         <label
           className="flex h-[42px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-0 text-[11px] font-medium text-slate-700 hover:bg-slate-100 sm:px-2.5 sm:text-xs"
-          title={locale === 'th' ? 'กรองเฉพาะสายที่มีจำนวน NG' : 'Show only lines with NG quantity'}
+          title={locale === 'th' ? 'กรองเฉพาะสายที่มีจำนวน Defect' : 'Show only lines with Defect quantity'}
         >
           <input
             type="checkbox"
@@ -977,7 +977,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
             onChange={e => setFilterOnlyWithNg(e.target.checked)}
           />
           <XCircle size={13} className="text-orange-400 shrink-0" aria-hidden />
-          {locale === 'th' ? 'มี NG' : 'NG'}
+          {locale === 'th' ? 'มี Defect' : 'Defect'}
         </label>
         <div className="relative min-w-[10rem] flex-1 basis-[12rem]">
           <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
@@ -1112,8 +1112,8 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                     }}
                     className="inline-flex items-center gap-1 rounded hover:bg-slate-200/70 px-1 py-0.5 transition-colors"
                     title={locale === 'th'
-                      ? '(OK+NG จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — คลิกเพื่อเรียง'
-                      : '(OK+NG actual) ÷ Σ(target × netMin/60) × 100 — click to sort'}
+                      ? '(OK+Defect จริง) ÷ Σ(เป้า × เวลาผลิตสุทธิ/60นาที) × 100 — คลิกเพื่อเรียง'
+                      : '(OK+Defect actual) ÷ Σ(target × netMin/60) × 100 — click to sort'}
                   >
                     <span>% PPH</span>
                     {sortPph === 'desc' ? (
@@ -1127,7 +1127,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
                 </th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{t('recordedHours')}</th>
                 <th className={DASHBOARD_TH_STICKY_SOLID}>{locale === 'th' ? 'สรุป Breakdown' : 'Breakdown'}</th>
-                <th className={DASHBOARD_TH_STICKY_SOLID}>NG</th>
+                <th className={DASHBOARD_TH_STICKY_SOLID}>Defect</th>
               </tr>
             </thead>
             <tbody>

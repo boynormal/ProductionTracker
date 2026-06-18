@@ -42,7 +42,9 @@ function monthPickerToRange(ym: string): { from: string; to: string } | null {
 }
 
 interface Props {
-  sections: { id: string; sectionCode: string; sectionName: string }[]
+  departments: { id: string; departmentCode: string; departmentName: string }[]
+  divisions: { id: string; divisionCode: string; divisionName: string; departmentId: string }[]
+  sections: { id: string; sectionCode: string; sectionName: string; divisionId: string }[]
 }
 
 function matchesOperatorSearch(query: string, name: string, employeeCode: string): boolean {
@@ -57,15 +59,31 @@ function matchesOperatorSearch(query: string, name: string, employeeCode: string
   )
 }
 
-export function ReportClient({ sections }: Props) {
+export function ReportClient({ departments, divisions, sections }: Props) {
   const { locale } = useI18n()
   const th = locale === 'th'
 
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [departmentFilter, setDepartmentFilter] = useState('all')
+  const [divisionFilter, setDivisionFilter] = useState('all')
   const [sectionFilter, setSectionFilter] = useState('all')
   const [granularity, setGranularity] = useState<Granularity>('day')
   const [operatorSearch, setOperatorSearch] = useState('')
+
+  // Cascading lists
+  const filteredDivisions = useMemo(
+    () => (departmentFilter === 'all' ? divisions : divisions.filter((d) => d.departmentId === departmentFilter)),
+    [divisions, departmentFilter],
+  )
+  const filteredSections = useMemo(() => {
+    if (divisionFilter !== 'all') return sections.filter((s) => s.divisionId === divisionFilter)
+    if (departmentFilter !== 'all') {
+      const divIds = new Set(filteredDivisions.map((d) => d.id))
+      return sections.filter((s) => divIds.has(s.divisionId))
+    }
+    return sections
+  }, [sections, divisionFilter, departmentFilter, filteredDivisions])
 
   const qs = useMemo(() => {
     const p = new URLSearchParams({
@@ -73,9 +91,12 @@ export function ReportClient({ sections }: Props) {
       to: dateTo,
       granularity,
     })
+    // Send most specific filter
     if (sectionFilter !== 'all') p.set('sectionId', sectionFilter)
+    else if (divisionFilter !== 'all') p.set('divisionId', divisionFilter)
+    else if (departmentFilter !== 'all') p.set('departmentId', departmentFilter)
     return p.toString()
-  }, [dateFrom, dateTo, sectionFilter, granularity])
+  }, [dateFrom, dateTo, sectionFilter, divisionFilter, departmentFilter, granularity])
 
   const rangeOk =
     granularity === 'month' || isProductionReportRangeAllowed(dateFrom, dateTo)
@@ -223,14 +244,14 @@ export function ReportClient({ sections }: Props) {
       XLSX.utils.book_append_sheet(wb, ws, 'Breakdown')
     }
 
-    // Sheet 5: NG
+    // Sheet 5: Defect
     {
       const header = [
         th ? 'ไลน์' : 'Line',
         periodLabel,
-        th ? 'NG (ชิ้น)' : 'NG qty',
+        th ? 'Defect (ชิ้น)' : 'Defect qty',
         th ? 'OK (ชิ้น)' : 'OK qty',
-        'NG Rate%',
+        'Defect Rate%',
         th ? 'หมวดหมู่หลัก' : 'Top Category',
       ]
       const rows = byLineNg.map((r) => [
@@ -242,7 +263,7 @@ export function ReportClient({ sections }: Props) {
         r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '',
       ])
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
-      XLSX.utils.book_append_sheet(wb, ws, 'NG')
+      XLSX.utils.book_append_sheet(wb, ws, 'Defect')
     }
 
     XLSX.writeFile(wb, `production_report_${nowStamp}.xlsx`)
@@ -302,14 +323,51 @@ export function ReportClient({ sections }: Props) {
           </>
         )}
         <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'แผนก' : 'Department'}</label>
+          <select
+            value={departmentFilter}
+            onChange={(e) => {
+              setDepartmentFilter(e.target.value)
+              setDivisionFilter('all')
+              setSectionFilter('all')
+            }}
+            className="max-w-[min(100%,18rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+          >
+            <option value="all">{th ? 'ทุกแผนก' : 'All departments'}</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.departmentCode} — {d.departmentName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'ฝ่าย' : 'Division'}</label>
+          <select
+            value={divisionFilter}
+            onChange={(e) => {
+              setDivisionFilter(e.target.value)
+              setSectionFilter('all')
+            }}
+            className="max-w-[min(100%,18rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+          >
+            <option value="all">{th ? 'ทุกฝ่าย' : 'All divisions'}</option>
+            {filteredDivisions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.divisionCode} — {d.divisionName}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="mb-1 block text-xs text-slate-500">{th ? 'ส่วน' : 'Section'}</label>
           <select
             value={sectionFilter}
             onChange={(e) => setSectionFilter(e.target.value)}
-            className="max-w-[min(100%,20rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+            className="max-w-[min(100%,18rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
           >
             <option value="all">{th ? 'ทุกส่วน' : 'All sections'}</option>
-            {sections.map((s) => (
+            {filteredSections.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.sectionCode} — {s.sectionName}
               </option>
@@ -409,7 +467,7 @@ export function ReportClient({ sections }: Props) {
             </TabsTrigger>
             <TabsTrigger value="ng" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
               <XCircle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
-              NG
+              Defect
             </TabsTrigger>
           </TabsList>
 
@@ -507,7 +565,7 @@ export function ReportClient({ sections }: Props) {
               title={th ? 'ไลน์การผลิต — ประสิทธิภาพรวม (OEE%) ต่อช่วง' : 'Lines — OEE % by period'}
               subtitle={
                 th
-                  ? 'คิดจากชั่วโมงที่มีบันทึกของแต่ละไลน์ (1 แถว = 1 ชม.) และ Breakdown/NG ของแถวนั้น — รวม Session ที่ยังเปิดกะ (ค่า OEE เป็นภาพระหว่างกะ)'
+                  ? 'คิดจากชั่วโมงที่มีบันทึกของแต่ละไลน์ (1 แถว = 1 ชม.) และ Breakdown/Defect ของแถวนั้น — รวม Session ที่ยังเปิดกะ (ค่า OEE เป็นภาพระหว่างกะ)'
                   : 'Per line-hour row; includes open sessions (OEE is in-shift / preliminary until close).'
               }
             >
@@ -585,22 +643,22 @@ export function ReportClient({ sections }: Props) {
           <TabsContent value="ng" className="mt-4">
             <ReportSection
               icon={<XCircle className="text-red-600" size={20} />}
-              title={th ? 'NG — สรุปตามไลน์การผลิต' : 'NG — summary by production line'}
+              title={th ? 'Defect — สรุปตามไลน์การผลิต' : 'Defect — summary by production line'}
               subtitle={
                 th
-                  ? 'นับจากรายการ NG ที่บันทึกในช่วงที่เลือก แยกตามไลน์และช่วงเวลา'
-                  : 'NG entries recorded in the selected period, grouped by line.'
+                  ? 'นับจากรายการ Defect ที่บันทึกในช่วงที่เลือก แยกตามไลน์และช่วงเวลา'
+                  : 'Defect entries recorded in the selected period, grouped by line.'
               }
             >
               <NgSummaryCards rows={byLineNg} th={th} />
               <SimpleTable
-                empty={th ? 'ไม่มีข้อมูล NG ในช่วงนี้' : 'No NG data in selected period'}
+                empty={th ? 'ไม่มีข้อมูล Defect ในช่วงนี้' : 'No Defect data in selected period'}
                 cols={[
                   th ? 'ไลน์' : 'Line',
                   periodLabel,
-                  th ? 'NG (ชิ้น)' : 'NG qty',
+                  th ? 'Defect (ชิ้น)' : 'Defect qty',
                   th ? 'OK (ชิ้น)' : 'OK qty',
-                  'NG Rate%',
+                  'Defect Rate%',
                   th ? 'หมวดหมู่หลัก' : 'Top Category',
                 ]}
                 rows={byLineNg.map((r) => [
@@ -685,11 +743,11 @@ function NgSummaryCards({ rows, th }: { rows: ByLineNgRow[]; th: boolean }) {
   return (
     <div className="mb-4 flex flex-wrap gap-3 px-2">
       <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
-        <p className="text-xs text-red-600">{th ? 'NG รวม (ชิ้น)' : 'Total NG qty'}</p>
+        <p className="text-xs text-red-600">{th ? 'Defect รวม (ชิ้น)' : 'Total Defect qty'}</p>
         <p className="text-2xl font-bold text-red-700">{totalNg.toLocaleString()}</p>
       </div>
       <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
-        <p className="text-xs text-red-600">{th ? 'NG Rate รวม' : 'Overall NG Rate'}</p>
+        <p className="text-xs text-red-600">{th ? 'Defect Rate รวม' : 'Overall Defect Rate'}</p>
         <p className={`text-2xl font-bold ${overallRate >= 0.05 ? 'text-red-700' : overallRate >= 0.02 ? 'text-amber-700' : 'text-emerald-700'}`}>
           {(overallRate * 100).toFixed(2)}%
         </p>

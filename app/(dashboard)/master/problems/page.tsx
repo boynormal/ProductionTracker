@@ -23,7 +23,7 @@ export default async function ProblemsPage() {
         { key: 'code', label: 'รหัส', labelEn: 'Code', type: 'text', required: true },
         { key: 'name', label: 'ชื่อ', labelEn: 'Name', type: 'text', required: true },
         { key: 'type', label: 'ประเภท', labelEn: 'Type', type: 'select', required: true,
-          options: [{ value: 'BREAKDOWN', label: 'Breakdown' }, { value: 'NG', label: 'NG' }] },
+          options: [{ value: 'BREAKDOWN', label: 'Breakdown' }, { value: 'NG', label: 'Defect' }] },
         { key: 'description', label: 'คำอธิบาย', labelEn: 'Description', type: 'text' },
       ]}
     />

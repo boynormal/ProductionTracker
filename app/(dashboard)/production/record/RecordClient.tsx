@@ -1873,7 +1873,7 @@ export function RecordClient({
                 )}
                 {selectedSlotRec.hasNg && (
                   <span className="ml-1 inline-flex items-center gap-0.5 rounded bg-orange-100 px-1.5 py-0.5 text-sm text-orange-700 font-medium">
-                    <XCircle size={10} /> NG
+                    <XCircle size={10} /> Defect
                   </span>
                 )}
               </p>
@@ -2032,7 +2032,7 @@ export function RecordClient({
               <input type="checkbox" {...register('hasNg')} className="rounded" />
               <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
                 <XCircle size={14} className="text-orange-500" />
-                NG
+                Defect
               </span>
             </label>
             <button type="button"

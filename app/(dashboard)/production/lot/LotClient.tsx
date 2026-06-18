@@ -362,7 +362,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                   <span className="flex items-center justify-end gap-1"><CheckCircle2 size={11} />OK</span>
                 </th>
                 <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-right')}>
-                  <span className="flex items-center justify-end gap-1"><XCircle size={11} />NG</span>
+                  <span className="flex items-center justify-end gap-1"><XCircle size={11} />Defect</span>
                 </th>
                 <th className={cn(DASHBOARD_TH_STICKY_SOLID, 'text-center')}>
                   <span className="flex items-center justify-center gap-1"><Wrench size={11} />BD</span>
@@ -536,7 +536,7 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
                             {rec.ngLogs?.length > 0 && (
                               <div>
                                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-orange-700">
-                                  NG ({rec.ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
+                                  Defect ({rec.ngLogs.length} {locale === 'th' ? 'รายการ' : 'items'})
                                 </p>
                                 <div className="space-y-1.5">
                                   {rec.ngLogs.map((ng: any) => (

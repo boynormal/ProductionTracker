@@ -185,11 +185,11 @@ export function HistoryHourlyEditDialog({
     for (let i = 0; i < ngs.length; i++) {
       const n = ngs[i]!
       if (!n.problemCategoryId.trim()) {
-        toast.error(th ? `NG แถว ${i + 1}: เลือกหมวด` : `NG row ${i + 1}: pick category`)
+        toast.error(th ? `Defect แถว ${i + 1}: เลือกหมวด` : `Defect row ${i + 1}: pick category`)
         return
       }
       if (machines.length > 0 && !n.machineId.trim()) {
-        toast.error(th ? `NG แถว ${i + 1}: เลือกเครื่อง` : `NG row ${i + 1}: pick machine`)
+        toast.error(th ? `Defect แถว ${i + 1}: เลือกเครื่อง` : `Defect row ${i + 1}: pick machine`)
         return
       }
     }
@@ -514,7 +514,7 @@ export function HistoryHourlyEditDialog({
 
             <div className="border-t border-slate-100 pt-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-800">NG</span>
+                <span className="text-sm font-semibold text-slate-800">Defect</span>
                 <Button type="button" variant="outline" size="sm" className="h-8 gap-1" onClick={addNg}>
                   <Plus size={14} /> {th ? 'เพิ่ม' : 'Add'}
                 </Button>
@@ -536,7 +536,7 @@ export function HistoryHourlyEditDialog({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <div>
-                        <Label className="text-[10px]">{th ? 'จำนวน NG' : 'NG qty'}</Label>
+                        <Label className="text-[10px]">{th ? 'จำนวน Defect' : 'Defect qty'}</Label>
                         <Input
                           type="number"
                           min={1}
@@ -601,8 +601,8 @@ export function HistoryHourlyEditDialog({
 
             <p className="text-[11px] text-slate-500">
               {th ?
-                'บันทึกครั้งนี้จะอัปเดต Part, OK, หมายเหตุ, Breakdown และ NG ตามแบบฟอร์มด้านบน'
-              : 'This save updates part, OK, remark, breakdown, and NG as shown above.'}
+                'บันทึกครั้งนี้จะอัปเดต Part, OK, หมายเหตุ, Breakdown และ Defect ตามแบบฟอร์มด้านบน'
+              : 'This save updates part, OK, remark, breakdown, and Defect as shown above.'}
             </p>
           </div>
         )}
