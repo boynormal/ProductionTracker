@@ -89,8 +89,20 @@ export async function GET(req: NextRequest) {
       },
       part: { select: { partSamco: true, partName: true } },
       machine: { select: { mcNo: true, line: { select: { lineCode: true } } } },
-      breakdownLogs: { select: { breakTimeMin: true } },
-      ngLogs: { select: { ngQty: true } },
+      breakdownLogs: {
+        select: {
+          breakTimeMin: true,
+          problemCategoryId: true,
+          problemCategory: { select: { code: true, name: true } },
+        },
+      },
+      ngLogs: {
+        select: {
+          ngQty: true,
+          problemCategoryId: true,
+          problemCategory: { select: { code: true, name: true } },
+        },
+      },
     },
   })
 
@@ -135,10 +147,32 @@ export async function GET(req: NextRequest) {
     slotCount: number
   }
 
+  type CatBdAgg = { categoryId: string; code: string; name: string; count: number; bdMin: number }
+  type CatNgAgg = { categoryId: string; code: string; name: string; ngQty: number }
+
+  type BdLineAgg = {
+    lineId: string
+    lineCode: string
+    period: string
+    bdCount: number
+    bdMin: number
+    categories: Map<string, CatBdAgg>
+  }
+  type NgLineAgg = {
+    lineId: string
+    lineCode: string
+    period: string
+    ngQty: number
+    okQty: number
+    categories: Map<string, CatNgAgg>
+  }
+
   const opMap = new Map<string, OpRow>()
   const partMap = new Map<string, PartRow>()
   const mcMap = new Map<string, McAgg>()
   const lineMap = new Map<string, LineAgg>()
+  const bdLineMap = new Map<string, BdLineAgg>()
+  const ngLineMap = new Map<string, NgLineAgg>()
 
   for (const r of records) {
     if (!r.session.reportingDate) continue
@@ -197,6 +231,67 @@ export async function GET(req: NextRequest) {
     l.ngQty += ng
     l.bdMin += bd
     l.slotCount += 1
+
+    // Breakdown detail aggregation (per line × period × category)
+    if (r.breakdownLogs.length > 0) {
+      if (!bdLineMap.has(lk)) {
+        bdLineMap.set(lk, {
+          lineId: r.session.lineId,
+          lineCode: r.session.line.lineCode,
+          period,
+          bdCount: 0,
+          bdMin: 0,
+          categories: new Map(),
+        })
+      }
+      const bdEntry = bdLineMap.get(lk)!
+      for (const b of r.breakdownLogs) {
+        bdEntry.bdCount += 1
+        bdEntry.bdMin += b.breakTimeMin
+        const catId = b.problemCategoryId
+        if (!bdEntry.categories.has(catId)) {
+          bdEntry.categories.set(catId, {
+            categoryId: catId,
+            code: b.problemCategory.code,
+            name: b.problemCategory.name,
+            count: 0,
+            bdMin: 0,
+          })
+        }
+        const cat = bdEntry.categories.get(catId)!
+        cat.count += 1
+        cat.bdMin += b.breakTimeMin
+      }
+    }
+
+    // NG detail aggregation (per line × period × category)
+    if (r.ngLogs.length > 0) {
+      if (!ngLineMap.has(lk)) {
+        ngLineMap.set(lk, {
+          lineId: r.session.lineId,
+          lineCode: r.session.line.lineCode,
+          period,
+          ngQty: 0,
+          okQty: 0,
+          categories: new Map(),
+        })
+      }
+      const ngEntry = ngLineMap.get(lk)!
+      ngEntry.okQty += r.okQty
+      for (const n of r.ngLogs) {
+        ngEntry.ngQty += n.ngQty
+        const catId = n.problemCategoryId
+        if (!ngEntry.categories.has(catId)) {
+          ngEntry.categories.set(catId, {
+            categoryId: catId,
+            code: n.problemCategory.code,
+            name: n.problemCategory.name,
+            ngQty: 0,
+          })
+        }
+        ngEntry.categories.get(catId)!.ngQty += n.ngQty
+      }
+    }
 
     if (!(r.machineId && r.machine)) {
       continue
@@ -390,12 +485,54 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const byLineBreakdown = Array.from(bdLineMap.values())
+    .map((e) => {
+      const cats = Array.from(e.categories.values()).sort((a, b) => b.bdMin - a.bdMin)
+      return {
+        lineId: e.lineId,
+        lineCode: e.lineCode,
+        period: e.period,
+        bdCount: e.bdCount,
+        bdMin: e.bdMin,
+        topCategory: cats[0] ?? null,
+        categories: cats,
+      }
+    })
+    .sort((a, b) => {
+      const c = a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' })
+      if (c !== 0) return c
+      return a.period.localeCompare(b.period)
+    })
+
+  const byLineNg = Array.from(ngLineMap.values())
+    .map((e) => {
+      const cats = Array.from(e.categories.values()).sort((a, b) => b.ngQty - a.ngQty)
+      const total = e.okQty + e.ngQty
+      return {
+        lineId: e.lineId,
+        lineCode: e.lineCode,
+        period: e.period,
+        ngQty: e.ngQty,
+        okQty: e.okQty,
+        ngRate: total > 0 ? e.ngQty / total : 0,
+        topCategory: cats[0] ?? null,
+        categories: cats,
+      }
+    })
+    .sort((a, b) => {
+      const c = a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' })
+      if (c !== 0) return c
+      return a.period.localeCompare(b.period)
+    })
+
   return NextResponse.json({
     granularity,
     byOperator,
     byPart,
     byMachine,
     byLine,
+    byLineBreakdown,
+    byLineNg,
     operatorMonthMatrix,
   })
 }

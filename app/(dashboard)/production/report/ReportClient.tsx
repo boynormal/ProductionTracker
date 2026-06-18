@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import useSWR from 'swr'
 import { format, subDays } from 'date-fns'
-import { BarChart3, Loader2, Users, Package, Cog, Search, Download } from 'lucide-react'
+import { BarChart3, Loader2, Users, Package, Cog, Search, Download, Wrench, XCircle } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { getOeeBg } from '@/lib/utils/oee'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -89,6 +89,8 @@ export function ReportClient({ sections }: Props) {
   const byOperator = payload?.byOperator ?? []
   const byPart = payload?.byPart ?? []
   const byLine = payload?.byLine ?? []
+  const byLineBreakdown: ByLineBreakdownRow[] = payload?.byLineBreakdown ?? []
+  const byLineNg: ByLineNgRow[] = payload?.byLineNg ?? []
   const operatorMonthMatrix = payload?.operatorMonthMatrix ?? null
   const rangeError =
     !rangeOk && granularity === 'day'
@@ -139,7 +141,12 @@ export function ReportClient({ sections }: Props) {
       ? (operatorMonthMatrix?.rows?.length ?? 0) === 0
       : byOperator.length === 0
   const allEmpty =
-    hasPayload && operatorsReportEmpty && byPart.length === 0 && byLine.length === 0
+    hasPayload &&
+    operatorsReportEmpty &&
+    byPart.length === 0 &&
+    byLine.length === 0 &&
+    byLineBreakdown.length === 0 &&
+    byLineNg.length === 0
   const showLoadingBlock = isLoading && !payload && !fetchFailed
 
   const exportExcel = async () => {
@@ -192,6 +199,50 @@ export function ReportClient({ sections }: Props) {
       ])
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
       XLSX.utils.book_append_sheet(wb, ws, 'Lines')
+    }
+
+    // Sheet 4: Breakdown
+    {
+      const header = [
+        th ? 'ไลน์' : 'Line',
+        periodLabel,
+        th ? 'จำนวนครั้ง' : '# Events',
+        th ? 'เวลารวม (นาที)' : 'Total (min)',
+        th ? 'เฉลี่ย/ครั้ง (นาที)' : 'Avg/event (min)',
+        th ? 'หมวดหมู่หลัก' : 'Top Category',
+      ]
+      const rows = byLineBreakdown.map((r) => [
+        r.lineCode,
+        r.period,
+        r.bdCount,
+        r.bdMin,
+        r.bdCount > 0 ? Math.round(r.bdMin / r.bdCount) : 0,
+        r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '',
+      ])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, 'Breakdown')
+    }
+
+    // Sheet 5: NG
+    {
+      const header = [
+        th ? 'ไลน์' : 'Line',
+        periodLabel,
+        th ? 'NG (ชิ้น)' : 'NG qty',
+        th ? 'OK (ชิ้น)' : 'OK qty',
+        'NG Rate%',
+        th ? 'หมวดหมู่หลัก' : 'Top Category',
+      ]
+      const rows = byLineNg.map((r) => [
+        r.lineCode,
+        r.period,
+        r.ngQty,
+        r.okQty,
+        Number((r.ngRate * 100).toFixed(2)),
+        r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '',
+      ])
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, 'NG')
     }
 
     XLSX.writeFile(wb, `production_report_${nowStamp}.xlsx`)
@@ -339,7 +390,7 @@ export function ReportClient({ sections }: Props) {
         </div>
       ) : (
         <Tabs defaultValue="operators" className="w-full">
-          <TabsList className="grid h-auto w-full max-w-2xl grid-cols-1 gap-1 sm:grid-cols-3">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5">
             <TabsTrigger value="operators" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
               <Users className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
               {th ? 'พนักงาน' : 'Operators'}
@@ -351,6 +402,14 @@ export function ReportClient({ sections }: Props) {
             <TabsTrigger value="lines" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
               <Cog className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
               {th ? 'ไลน์การผลิต' : 'Lines'}
+            </TabsTrigger>
+            <TabsTrigger value="breakdown" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
+              <Wrench className="h-4 w-4 shrink-0 text-orange-600" aria-hidden />
+              Breakdown
+            </TabsTrigger>
+            <TabsTrigger value="ng" className="inline-flex items-center justify-center gap-1.5 text-xs sm:text-sm">
+              <XCircle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
+              NG
             </TabsTrigger>
           </TabsList>
 
@@ -489,8 +548,152 @@ export function ReportClient({ sections }: Props) {
               />
             </ReportSection>
           </TabsContent>
+
+          <TabsContent value="breakdown" className="mt-4">
+            <ReportSection
+              icon={<Wrench className="text-orange-600" size={20} />}
+              title={th ? 'Breakdown — สรุปตามไลน์การผลิต' : 'Breakdown — summary by production line'}
+              subtitle={
+                th
+                  ? 'นับจากรายการ Breakdown ที่บันทึกในช่วงที่เลือก แยกตามไลน์และช่วงเวลา'
+                  : 'Breakdown events recorded in the selected period, grouped by line.'
+              }
+            >
+              <BreakdownSummaryCards rows={byLineBreakdown} th={th} />
+              <SimpleTable
+                empty={th ? 'ไม่มีข้อมูล Breakdown ในช่วงนี้' : 'No breakdown data in selected period'}
+                cols={[
+                  th ? 'ไลน์' : 'Line',
+                  periodLabel,
+                  th ? 'ครั้ง' : '# Events',
+                  th ? 'เวลารวม (นาที)' : 'Total (min)',
+                  th ? 'เฉลี่ย/ครั้ง (นาที)' : 'Avg/event (min)',
+                  th ? 'หมวดหมู่หลัก' : 'Top Category',
+                ]}
+                rows={byLineBreakdown.map((r) => [
+                  r.lineCode,
+                  r.period,
+                  r.bdCount.toLocaleString(),
+                  r.bdMin.toLocaleString(),
+                  r.bdCount > 0 ? Math.round(r.bdMin / r.bdCount).toLocaleString() : '—',
+                  r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '—',
+                ])}
+              />
+            </ReportSection>
+          </TabsContent>
+
+          <TabsContent value="ng" className="mt-4">
+            <ReportSection
+              icon={<XCircle className="text-red-600" size={20} />}
+              title={th ? 'NG — สรุปตามไลน์การผลิต' : 'NG — summary by production line'}
+              subtitle={
+                th
+                  ? 'นับจากรายการ NG ที่บันทึกในช่วงที่เลือก แยกตามไลน์และช่วงเวลา'
+                  : 'NG entries recorded in the selected period, grouped by line.'
+              }
+            >
+              <NgSummaryCards rows={byLineNg} th={th} />
+              <SimpleTable
+                empty={th ? 'ไม่มีข้อมูล NG ในช่วงนี้' : 'No NG data in selected period'}
+                cols={[
+                  th ? 'ไลน์' : 'Line',
+                  periodLabel,
+                  th ? 'NG (ชิ้น)' : 'NG qty',
+                  th ? 'OK (ชิ้น)' : 'OK qty',
+                  'NG Rate%',
+                  th ? 'หมวดหมู่หลัก' : 'Top Category',
+                ]}
+                rows={byLineNg.map((r) => [
+                  r.lineCode,
+                  r.period,
+                  r.ngQty.toLocaleString(),
+                  r.okQty.toLocaleString(),
+                  <span
+                    className={`rounded px-2 py-0.5 font-bold ${r.ngRate >= 0.05 ? 'bg-red-100 text-red-700' : r.ngRate >= 0.02 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}
+                  >
+                    {(r.ngRate * 100).toFixed(2)}%
+                  </span>,
+                  r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '—',
+                ])}
+              />
+            </ReportSection>
+          </TabsContent>
         </Tabs>
       )}
+    </div>
+  )
+}
+
+type BdCategoryRow = { categoryId: string; code: string; name: string; count: number; bdMin: number }
+type NgCategoryRow = { categoryId: string; code: string; name: string; ngQty: number }
+
+type ByLineBreakdownRow = {
+  lineId: string
+  lineCode: string
+  period: string
+  bdCount: number
+  bdMin: number
+  topCategory: BdCategoryRow | null
+  categories: BdCategoryRow[]
+}
+
+type ByLineNgRow = {
+  lineId: string
+  lineCode: string
+  period: string
+  ngQty: number
+  okQty: number
+  ngRate: number
+  topCategory: NgCategoryRow | null
+  categories: NgCategoryRow[]
+}
+
+function BreakdownSummaryCards({ rows, th }: { rows: ByLineBreakdownRow[]; th: boolean }) {
+  const totalCount = rows.reduce((s, r) => s + r.bdCount, 0)
+  const totalMin = rows.reduce((s, r) => s + r.bdMin, 0)
+  const avgMin = totalCount > 0 ? Math.round(totalMin / totalCount) : 0
+  if (rows.length === 0) return null
+  return (
+    <div className="mb-4 flex flex-wrap gap-3 px-2">
+      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+        <p className="text-xs text-orange-600">{th ? 'จำนวนครั้ง' : 'Total Events'}</p>
+        <p className="text-2xl font-bold text-orange-700">{totalCount.toLocaleString()}</p>
+      </div>
+      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+        <p className="text-xs text-orange-600">{th ? 'เวลาหยุดรวม' : 'Total Downtime'}</p>
+        <p className="text-2xl font-bold text-orange-700">
+          {totalMin >= 60
+            ? `${(totalMin / 60).toFixed(1)} ${th ? 'ชม.' : 'hr'}`
+            : `${totalMin} ${th ? 'นาที' : 'min'}`}
+        </p>
+      </div>
+      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+        <p className="text-xs text-orange-600">{th ? 'เฉลี่ย/ครั้ง' : 'Avg/Event'}</p>
+        <p className="text-2xl font-bold text-orange-700">
+          {avgMin} {th ? 'นาที' : 'min'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function NgSummaryCards({ rows, th }: { rows: ByLineNgRow[]; th: boolean }) {
+  const totalNg = rows.reduce((s, r) => s + r.ngQty, 0)
+  const totalOk = rows.reduce((s, r) => s + r.okQty, 0)
+  const overallRate = totalNg + totalOk > 0 ? totalNg / (totalNg + totalOk) : 0
+  if (rows.length === 0) return null
+  return (
+    <div className="mb-4 flex flex-wrap gap-3 px-2">
+      <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
+        <p className="text-xs text-red-600">{th ? 'NG รวม (ชิ้น)' : 'Total NG qty'}</p>
+        <p className="text-2xl font-bold text-red-700">{totalNg.toLocaleString()}</p>
+      </div>
+      <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
+        <p className="text-xs text-red-600">{th ? 'NG Rate รวม' : 'Overall NG Rate'}</p>
+        <p className={`text-2xl font-bold ${overallRate >= 0.05 ? 'text-red-700' : overallRate >= 0.02 ? 'text-amber-700' : 'text-emerald-700'}`}>
+          {(overallRate * 100).toFixed(2)}%
+        </p>
+      </div>
     </div>
   )
 }
