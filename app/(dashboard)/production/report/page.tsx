@@ -1,9 +1,15 @@
 import { auth } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { ReportClient } from './ReportLoader'
 
 export default async function ReportPage() {
-  await auth()
+  const session = await auth()
+  if (!session) redirect('/login')
+
+  const canView = await checkPermissionForSession(session, 'menu.production.report', { menuPath: '/production/report' })
+  if (!canView) redirect('/')
 
   const [departments, divisions, sections] = await Promise.all([
     prisma.department.findMany({
