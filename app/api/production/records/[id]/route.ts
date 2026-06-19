@@ -132,13 +132,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     const auditUserId = await auditUserIdFromSession(session)
 
-    if (shouldReplaceBreakdown) {
-      await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-    if (shouldReplaceNg) {
-      await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-
     let breakdownData: ReturnType<typeof normalizeBreakdownEntries> = []
     if (shouldReplaceBreakdown) {
       try {
@@ -252,20 +245,31 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const updated = await prisma.hourlyRecord.update({
-      where: { id },
-      data: updatePayload,
-      include: { breakdownLogs: true, ngLogs: true },
-    })
+    const updated = await prisma.$transaction(async (tx) => {
+      if (shouldReplaceBreakdown) {
+        await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+      if (shouldReplaceNg) {
+        await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
 
-    await prisma.auditLog.create({
-      data: {
-        userId:   auditUserId,
-        action:   'UPDATE_RECORD',
-        entity:   'hourly_records',
-        entityId: id,
-        details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
-      },
+      const updatedRecord = await tx.hourlyRecord.update({
+        where: { id },
+        data: updatePayload,
+        include: { breakdownLogs: true, ngLogs: true },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          userId:   auditUserId,
+          action:   'UPDATE_RECORD',
+          entity:   'hourly_records',
+          entityId: id,
+          details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
+        },
+      })
+
+      return updatedRecord
     })
 
     return NextResponse.json({ data: updated })
@@ -279,16 +283,18 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
-  if (!canWrite) {
+  const canDelete = await checkPermissionForSession(session, 'api.production.record.delete', { apiPath: req.nextUrl.pathname })
+  if (!canDelete) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { id } = await params
-  await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.modelChange.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.hourlyRecord.delete({ where: { id } })
+  await prisma.$transaction(async (tx) => {
+    await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.modelChange.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.hourlyRecord.delete({ where: { id } })
+  })
 
   return NextResponse.json({ success: true })
 }
