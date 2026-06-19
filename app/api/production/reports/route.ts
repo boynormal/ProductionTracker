@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
 import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/utils/oee'
+import { requireApiPermission } from '@/lib/permissions/route-guard'
 
 /** รวม Session ที่ยังเปิดกะ — ไม่เช่นนั้นรายงานจะว่างจนกว่าจะปิดกะ */
 const REPORT_SESSION_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const
@@ -29,8 +29,8 @@ function utcMonthRangeFromDate(fromDate: Date): { start: Date; endExclusive: Dat
 
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireApiPermission(req, 'menu.production.report', { menuPath: '/production/report' })
+  if (!guard.ok) return guard.response
 
   const { searchParams } = new URL(req.url)
   const from = searchParams.get('from')
