@@ -15,6 +15,7 @@ import { checkPermission } from '@/lib/permissions/guard'
 
 const schema = z.object({
   sessionId:      z.string(),
+  lineId:         z.string().optional(),
   hourSlot:       z.number().int().min(1).max(11),
   partId:         z.string(),
   machineId:      z.string().optional(),
@@ -184,6 +185,13 @@ export async function POST(req: NextRequest) {
     // Validate session exists
     const prodSession = await prisma.productionSession.findUnique({ where: { id: data.sessionId } })
     if (!prodSession) return NextResponse.json({ error: 'Session ไม่พบ กรุณาสร้าง Session ก่อน' }, { status: 404 })
+
+    if (data.lineId && prodSession.lineId !== data.lineId) {
+      return NextResponse.json(
+        { error: 'Session ไม่ตรงกับ Line ที่เลือก — กรุณาโหลด Session ใหม่ก่อนบันทึก' },
+        { status: 409 },
+      )
+    }
 
     if (prodSession.status !== 'IN_PROGRESS') {
       return NextResponse.json(
