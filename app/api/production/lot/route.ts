@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { prisma } from '@/lib/prisma'
 import {
   getThaiTodayUTC,
@@ -26,6 +27,11 @@ function monthToRange(monthStr: string): { from: Date; toExclusive: Date } | nul
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const canView = await checkPermissionForSession(session, 'menu.production.lot', {
+    menuPath: '/production/lot',
+  })
+  if (!canView) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const modeRaw = searchParams.get('mode')
