@@ -156,6 +156,7 @@ model Line {
   machines         Machine[]
   sessions         ProductionSession[]
   linePartTargets  LinePartTarget[]
+  otPlans          OtPlan[]
 
   @@index([divisionCode])
   @@index([sectionId])
@@ -715,6 +716,26 @@ model PermissionScope {
   @@index([shiftType])
   @@index([expiresAt])
   @@map("permission_scopes")
+}
+
+// ===============================
+// OT PLAN
+// ===============================
+
+model OtPlan {
+  id           String   @id @default(cuid())
+  lineId       String
+  planDate     DateTime @db.Date
+  plannedHours Int      @default(0)
+  remark       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  line Line @relation(fields: [lineId], references: [id])
+
+  @@unique([lineId, planDate])
+  @@index([planDate])
+  @@map("ot_plans")
 }
 
 model UserPermissionOverride {

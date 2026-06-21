@@ -102,7 +102,10 @@ export function LoginClient() {
               disabled={isSubmitting}
               className="mt-2 w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
-              {isSubmitting && <Loader2 size={16} className="animate-spin" />}
+              <Loader2
+                size={16}
+                className={`animate-spin transition-all duration-150 ${isSubmitting ? 'opacity-100 mr-1' : 'opacity-0 w-0 h-0 overflow-hidden'}`}
+              />
               {t('login')}
             </button>
           </form>

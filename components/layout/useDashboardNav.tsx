@@ -62,6 +62,7 @@ export function useDashboardNav(): { items: DashboardNavItem[] } {
             { href: '/production/report', label: t('productionReport'), permissionKey: 'menu.production.report' },
             { href: '/production/mtbf', label: 'MTBF/MTTR', permissionKey: 'menu.production.mtbf' },
             { href: '/production/lot', label: t('productionLot'), permissionKey: 'menu.production.lot' },
+            { href: '/production/ot-plan', label: t('productionOtPlan'), permissionKey: 'menu.production.otPlan' },
           ],
         },
         {

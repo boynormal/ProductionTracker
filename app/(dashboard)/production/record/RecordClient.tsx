@@ -27,7 +27,7 @@ const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
   hourSlot:  z.number().int().min(1).max(11),
   okQty:     z.number().int().min(0),
   remark:    z.string().optional(),
-  lotNumber: z.string().max(100).optional(),
+  lotNumber: z.string().min(1, t('recordLotRequired')).max(100),
   hasBreakdown: z.boolean().default(false),
   hasNg:        z.boolean().default(false),
   breakdown: z.array(z.object({
@@ -35,7 +35,7 @@ const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
     /** นาทีเท่านั้น — ระบบสร้างช่วงเวลาจากต้นชั่วโมงของ slot (รวมทุกแถวไม่เกิน 60 นาที/ชม.) */
     breakTimeMin:      z.coerce.number().int().min(1).max(60),
     problemCategoryId: z.string().min(1, t('recordSelectCause')),
-    problemDetail:     z.string().optional(),
+    problemDetail:     z.string().min(1, t('recordBreakdownDetailRequired')),
   })).optional(),
   ng: z.array(z.object({
     /** ว่างได้ — ระบบเติมจากเครื่องเดียวในไลน์หรือ machine ของ Session */
@@ -44,6 +44,15 @@ const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
     problemCategoryId: z.string().min(1, t('recordNgCause')),
     problemDetail:     z.string().optional(),
   })).optional(),
+}).superRefine((data, ctx) => {
+  // Lot Number required
+  if (!data.lotNumber || data.lotNumber.trim() === '') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: t('recordLotRequired'), path: ['lotNumber'] })
+  }
+  // Breakdown: if checked, must have at least 1 row
+  if (data.hasBreakdown && (!data.breakdown || data.breakdown.length === 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: t('recordBreakdownRequired'), path: ['breakdown'] })
+  }
 })
 
 type FormData = z.infer<ReturnType<typeof createSchema>>
@@ -1898,15 +1907,19 @@ export function RecordClient({
         <div className={cn('rounded-xl border border-slate-100 bg-white p-4 shadow-sm', selectedSlotRec && 'opacity-40 pointer-events-none select-none')}>
           <label className="mb-2 block text-base font-semibold text-slate-700 sm:text-lg">
             {locale === 'th' ? 'Lot Number' : 'Lot Number'}
-            <span className="ml-2 text-sm font-normal text-slate-400">({locale === 'th' ? 'ถ้ามี' : 'optional'})</span>
+            <span className="ml-1.5 text-red-500">*</span>
           </label>
           <input
             type="text"
             {...register('lotNumber')}
             maxLength={100}
             placeholder={locale === 'th' ? 'เช่น LOT-2026-001' : 'e.g. LOT-2026-001'}
-            className="w-full rounded-lg border border-slate-200 px-4 py-3 text-lg font-mono outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            className={cn(
+              'w-full rounded-lg border px-4 py-3 text-lg font-mono outline-none focus:ring-2 focus:ring-blue-100',
+              errors.lotNumber ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-blue-400',
+            )}
           />
+          {errors.lotNumber && <p className="mt-1 text-sm text-red-500">{errors.lotNumber.message}</p>}
         </div>
 
         {/* OK Qty */}
@@ -1942,7 +1955,7 @@ export function RecordClient({
             <button type="button"
               onClick={() => {
                 setValue('hasBreakdown', true)
-                appendBd({ machineId: '', breakTimeMin: 10, problemCategoryId: '' })
+                appendBd({ machineId: '', breakTimeMin: 10, problemCategoryId: '', problemDetail: '' })
               }}
               className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
               <Plus size={14} /> {t('recordAdd')}
@@ -1955,6 +1968,9 @@ export function RecordClient({
           ) : null}
           {watchHasBreakdown ? (
             <p className="mb-3 text-sm leading-snug text-slate-600">{t('recordBreakdownMinutesRule')}</p>
+          ) : null}
+          {watchHasBreakdown && bdFields.length === 0 && (errors.breakdown as any)?.message ? (
+            <p className="mb-2 text-sm text-red-500">{String((errors.breakdown as any).message)}</p>
           ) : null}
           {watchHasBreakdown && bdFields.map((field, i) => (
             <div key={field.id} className="mb-3 rounded-lg border border-red-100 bg-red-50 p-3 space-y-2">
@@ -2011,9 +2027,18 @@ export function RecordClient({
                   ) : null}
               </div>
               <div>
-                <label className="mb-0.5 block text-xs text-slate-500">{t('detailsMore')}</label>
+                <label className="mb-0.5 block text-xs text-slate-500">
+                  {t('detailsMore')}
+                  <span className="ml-1 text-red-500">*</span>
+                </label>
                 <input {...register(`breakdown.${i}.problemDetail`)} placeholder={t('detailsMore')}
-                  className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none" />
+                  className={cn(
+                    'w-full rounded border px-2 py-1.5 text-xs outline-none',
+                    errors.breakdown?.[i]?.problemDetail ? 'border-red-400' : 'border-slate-200',
+                  )} />
+                {errors.breakdown?.[i]?.problemDetail?.message ? (
+                  <p className="mt-0.5 text-xs text-red-500">{String(errors.breakdown[i]!.problemDetail!.message)}</p>
+                ) : null}
               </div>
               <button type="button" onClick={() => removeBd(i)} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
                 <Minus size={12} /> {t('recordRemove')}

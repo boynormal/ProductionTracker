@@ -48,6 +48,19 @@ export const sessionUpdateSchema = z.object({
   remark:  z.string().optional().nullable(),
 })
 
+export const otPlanItemSchema = z.object({
+  lineId:       z.string().min(1),
+  planDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'planDate must be YYYY-MM-DD'),
+  plannedHours: z.number().int().min(0).max(24),
+  remark:       z.string().optional().nullable(),
+})
+
+export const otPlanBatchSchema = z.object({
+  items: z.array(otPlanItemSchema).min(1),
+})
+
 export type HourlyRecordInput = z.infer<typeof hourlyRecordSchema>
 export type SessionCreateInput = z.infer<typeof sessionCreateSchema>
 export type SessionUpdateInput = z.infer<typeof sessionUpdateSchema>
+export type OtPlanItem = z.infer<typeof otPlanItemSchema>
+export type OtPlanBatchInput = z.infer<typeof otPlanBatchSchema>
