@@ -44,6 +44,7 @@ export const PERMISSION_CATALOG: PermissionCatalogItem[] = [
   { key: 'api.master.write', name: 'Write master data API', resource: 'master', action: 'write', category: 'API', path: '/api/master', defaultRoles: ['ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.record.write', name: 'Write production records API', resource: 'production.records', action: 'write', category: 'API', method: 'POST', path: '/api/production/records', defaultRoles: ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.session.write', name: 'Write production sessions API', resource: 'production.sessions', action: 'write', category: 'API', method: 'POST', path: '/api/production/sessions', defaultRoles: ['OPERATOR', 'SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
+  { key: 'api.production.otplan.read', name: 'Read OT Plan API', resource: 'production.otplan', action: 'read', category: 'API', method: 'GET', path: '/api/production/ot-plan', defaultRoles: ['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'] },
   { key: 'api.production.otplan.write', name: 'Write OT Plan API', resource: 'production.otplan', action: 'write', category: 'API', method: 'POST', path: '/api/production/ot-plan', defaultRoles: ['ADMIN'] },
   {
     key: 'api.production.sessions.auto-close',
