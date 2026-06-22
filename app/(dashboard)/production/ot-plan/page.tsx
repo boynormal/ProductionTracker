@@ -2,11 +2,17 @@ import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getThaiTodayUTC, formatThaiDateUTCISO } from '@/lib/time-utils'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { OtPlanClient } from './OtPlanClient'
 
 export default async function OtPlanPage() {
   const session = await auth()
   if (!session) redirect('/login')
+
+  const canView = await checkPermissionForSession(session, 'menu.production.otPlan', {
+    menuPath: '/production/ot-plan',
+  })
+  if (!canView) redirect('/')
 
   const today = getThaiTodayUTC()
   const todayIso = formatThaiDateUTCISO(today)
