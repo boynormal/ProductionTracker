@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { prisma } from '@/lib/prisma'
 import { getThaiTodayUTC, formatThaiDateUTCISO } from '@/lib/time-utils'
 import { OtPlanClient } from './OtPlanClient'
@@ -7,6 +8,12 @@ import { OtPlanClient } from './OtPlanClient'
 export default async function OtPlanPage() {
   const session = await auth()
   if (!session) redirect('/login')
+
+  const canEditPlan = session.user?.id
+    ? await checkPermissionForSession(session, 'api.production.otplan.write', {
+        apiPath: '/api/production/ot-plan',
+      })
+    : false
 
   const today = getThaiTodayUTC()
   const todayIso = formatThaiDateUTCISO(today)
@@ -46,7 +53,7 @@ export default async function OtPlanPage() {
 
   return (
     <OtPlanClient
-      userRole={session.user?.role}
+      canEditPlan={canEditPlan}
       divisions={JSON.parse(JSON.stringify(divisions))}
       sections={JSON.parse(JSON.stringify(sections))}
       lines={JSON.parse(JSON.stringify(lines))}

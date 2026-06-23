@@ -105,32 +105,18 @@ function calcDiffPercent(plan: number, actual: number): number | null {
   return Math.round(((actual - plan) / plan) * 1000) / 10
 }
 
-function diffBadge(
-  diffPct: number | null,
-  t: (key: TranslationKey) => string,
-) {
-  if (diffPct === null) return <span className="text-gray-400 text-xs">—</span>
-  if (diffPct === 0) {
-    return (
-      <span className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold border bg-gray-100 text-gray-600 border-gray-200">
-        0%
-      </span>
-    )
+/** ส่วนต่าง (ชม.) = actual − plan — used in table summary columns */
+function deltaCell(plan: number, actual: number) {
+  if (plan === 0 && actual === 0) {
+    return <span className="text-gray-400 text-xs">—</span>
   }
-  const isUp = diffPct > 0
-  const label = isUp ? t('otPlanDiffUp') : t('otPlanDiffDown')
-  const formatted = isUp ? `+${diffPct.toFixed(1)}%` : `${diffPct.toFixed(1)}%`
-  const color = isUp
-    ? 'bg-red-100 text-red-700 border-red-200'
-    : 'bg-green-100 text-green-700 border-green-200'
-  return (
-    <span
-      className={`inline-flex flex-col items-center rounded px-1 py-0.5 text-xs font-semibold border leading-tight ${color}`}
-    >
-      <span className="text-[10px] font-normal">{label}</span>
-      <span>{formatted}</span>
-    </span>
-  )
+  const delta = actual - plan
+  if (plan === 0 && actual > 0) {
+    return <span className="text-xs font-bold tabular-nums text-amber-600">+{delta}</span>
+  }
+  const color = delta > 0 ? 'text-red-600' : delta < 0 ? 'text-emerald-600' : 'text-gray-500'
+  const formatted = delta > 0 ? `+${delta}` : String(delta)
+  return <span className={`text-xs font-bold tabular-nums ${color}`}>{formatted}</span>
 }
 
 /** Sticky offsets for summary columns (each w-14 = 56px) */
@@ -144,7 +130,7 @@ const TABLE_SCROLL =
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface OtPlanClientProps {
-  userRole?: string | null
+  canEditPlan?: boolean
   divisions: Division[]
   sections: Section[]
   lines: Line[]
@@ -153,7 +139,7 @@ interface OtPlanClientProps {
 }
 
 export function OtPlanClient({
-  userRole,
+  canEditPlan = false,
   divisions,
   sections,
   lines,
@@ -161,7 +147,6 @@ export function OtPlanClient({
   initialYear,
 }: OtPlanClientProps) {
   const { t, locale } = useI18n()
-  const isAdmin = userRole === 'ADMIN'
 
   // ─── View state ───────────────────────────────────────────────────────────
   const [mode, setMode] = useState<'month' | 'year'>('month')
@@ -285,7 +270,7 @@ export function OtPlanClient({
 
   // ─── Save ─────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    if (!isAdmin || Object.keys(drafts).length === 0) return
+    if (!canEditPlan || Object.keys(drafts).length === 0) return
     setSaving(true)
     setSaveMsg(null)
 
@@ -315,7 +300,7 @@ export function OtPlanClient({
     } finally {
       setSaving(false)
     }
-  }, [isAdmin, drafts, mutate, t])
+  }, [canEditPlan, drafts, mutate, t])
 
   // ─── Derived data ─────────────────────────────────────────────────────────
   const monthData = mode === 'month' ? (rawData as MonthResponse | undefined) : undefined
@@ -522,7 +507,7 @@ export function OtPlanClient({
             </TabsList>
           </Tabs>
 
-          {mode === 'month' && isAdmin && (
+          {mode === 'month' && canEditPlan && (
             <Button size="sm" onClick={handleSave} disabled={saving || !hasDrafts} className="gap-1">
               <Save size={14} />
               {saving ? t('otPlanSaving') : t('otPlanSave')}
@@ -859,7 +844,7 @@ export function OtPlanClient({
                       จริงรวม
                     </th>
                     <th className={`sticky top-0 ${SUM_DIFF_RIGHT} z-30 px-1 py-2 text-center font-semibold text-gray-700 w-14 min-w-[56px] border-l border-b border-gray-200 bg-blue-50`}>
-                      {t('otPlanDiff')}
+                      {t('otPlanDelta')}
                     </th>
                   </tr>
                 </thead>
@@ -923,7 +908,7 @@ export function OtPlanClient({
                               >
                                 <div className="flex flex-col items-center gap-0" style={{ minHeight: 32 }}>
                                   {/* Plan row */}
-                                  {isAdmin ? (
+                                  {canEditPlan ? (
                                     <input
                                       type="number"
                                       min={0}
@@ -977,7 +962,7 @@ export function OtPlanClient({
                             </div>
                           </td>
                           <td className={`sticky ${SUM_DIFF_RIGHT} z-10 px-1 py-1.5 text-center border-l border-gray-200 ${ri % 2 === 0 ? 'bg-slate-50' : 'bg-slate-100'}`}>
-                            {diffBadge(calcDiffPercent(rowPlan, rowActual), t)}
+                            {deltaCell(rowPlan, rowActual)}
                           </td>
                         </tr>
                       )
@@ -1044,7 +1029,7 @@ export function OtPlanClient({
                         </div>
                       </td>
                       <td className={`sticky ${SUM_DIFF_RIGHT} z-10 px-1 py-2 text-center border-l border-gray-300 bg-slate-200`}>
-                        {diffBadge(monthGrandTotal.diff, t)}
+                        {deltaCell(monthGrandTotal.plan, monthGrandTotal.actual)}
                       </td>
                     </tr>
                   )}
@@ -1054,7 +1039,7 @@ export function OtPlanClient({
 
           {/* Legend */}
           <div className="flex shrink-0 flex-wrap gap-3 text-xs text-gray-500 pt-1">
-            {isAdmin && (
+            {canEditPlan && (
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-blue-50 border border-blue-400 inline-block" />
                 แก้ไขแล้ว
@@ -1101,7 +1086,7 @@ export function OtPlanClient({
                     จริงรวม
                   </th>
                   <th className={`sticky top-0 ${SUM_DIFF_RIGHT} z-30 px-1 py-2 text-center font-semibold text-gray-700 w-14 min-w-[56px] border-l border-b border-gray-200 bg-blue-50`}>
-                    {t('otPlanDiff')}
+                    {t('otPlanDelta')}
                   </th>
                 </tr>
               </thead>
@@ -1140,7 +1125,9 @@ export function OtPlanClient({
                                 {d.actual}
                               </div>
                             )}
-                            {d.plan > 0 && <div className="mt-0.5">{diffBadge(d.diff, t)}</div>}
+                            {(d.plan > 0 || d.actual > 0) && (
+                              <div className="mt-0.5">{deltaCell(d.plan, d.actual)}</div>
+                            )}
                           </td>
                         )
                       })}
@@ -1151,7 +1138,7 @@ export function OtPlanClient({
                         {row.totals.actual}
                       </td>
                       <td className={`sticky ${SUM_DIFF_RIGHT} z-10 px-1 py-1.5 text-center border-l border-gray-200 bg-blue-50/80`}>
-                        {diffBadge(row.totals.diff, t)}
+                        {deltaCell(row.totals.plan, row.totals.actual)}
                       </td>
                     </tr>
                   ))
@@ -1172,7 +1159,9 @@ export function OtPlanClient({
                         >
                           {d.plan > 0 && <div className="text-gray-700">{d.plan}</div>}
                           {d.actual > 0 && <div className="text-blue-600">{d.actual}</div>}
-                          {d.plan > 0 && <div>{diffBadge(d.diff, t)}</div>}
+                          {(d.plan > 0 || d.actual > 0) && (
+                            <div>{deltaCell(d.plan, d.actual)}</div>
+                          )}
                         </td>
                       )
                     })}
@@ -1183,7 +1172,7 @@ export function OtPlanClient({
                       {yearGrandTotal.totals.actual}
                     </td>
                     <td className={`sticky ${SUM_DIFF_RIGHT} z-10 px-1 py-2 text-center border-l border-gray-200 bg-blue-100`}>
-                      {diffBadge(yearGrandTotal.totals.diff, t)}
+                      {deltaCell(yearGrandTotal.totals.plan, yearGrandTotal.totals.actual)}
                     </td>
                   </tr>
                 )}
