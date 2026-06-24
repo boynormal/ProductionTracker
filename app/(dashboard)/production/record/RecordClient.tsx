@@ -642,6 +642,7 @@ export function RecordClient({
     (lineId: string) => {
       setSelectedLineId(lineId)
       setValue('partId', '')
+      setSessionData(null)
       setPartSearch('')
       setPartPanelOpen(false)
       setLineSearch('')
@@ -992,9 +993,18 @@ export function RecordClient({
     }
 
     let session = sessionData
+    if (session?.lineId && session.lineId !== lid) {
+      setSessionData(null)
+      session = await loadInProgressSessionForLine(lid)
+    }
     if (!session) {
       session = await autoCreateSession(lid)
       if (!session) return
+    }
+    if (session?.lineId && session.lineId !== lid) {
+      setSessionData(null)
+      toast.error(locale === 'th' ? 'Session ไม่ตรงกับไลน์ที่เลือก กรุณาลองใหม่' : 'Session does not match the selected line. Please try again.')
+      return
     }
 
     const breakdownPayload: {
@@ -1049,6 +1059,7 @@ export function RecordClient({
 
         body: JSON.stringify({
           sessionId: session.id,
+          lineId:    lid,
           hourSlot:  data.hourSlot,
           partId:    data.partId,
           okQty:     data.okQty,
