@@ -247,11 +247,6 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.otplan.write', {
-    apiPath: req.nextUrl.pathname,
-  })
-  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
   try {
     const raw = await req.json()
     const parsed = otPlanBatchSchema.safeParse(raw)
@@ -259,7 +254,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
-    const results = await Promise.all(
+    const lineIds = [...new Set(parsed.data.items.map((item) => item.lineId))]
+    const lines = await prisma.line.findMany({
+      where: { id: { in: lineIds }, isActive: true },
+      select: {
+        id: true,
+        section: {
+          select: {
+            id: true,
+            divisionId: true,
+            division: { select: { departmentId: true } },
+          },
+        },
+      },
+    })
+    const lineById = new Map(lines.map((line) => [line.id, line]))
+    const missingLineId = lineIds.find((lineId) => !lineById.has(lineId))
+    if (missingLineId) {
+      return NextResponse.json({ error: 'Line not found or inactive', lineId: missingLineId }, { status: 400 })
+    }
+
+    for (const line of lines) {
+      const canWrite = await checkPermissionForSession(session, 'api.production.otplan.write', {
+        apiPath: req.nextUrl.pathname,
+        lineId: line.id,
+        sectionId: line.section?.id ?? null,
+        divisionId: line.section?.divisionId ?? null,
+        departmentId: line.section?.division?.departmentId ?? null,
+      })
+      if (!canWrite) return NextResponse.json({ error: 'Forbidden', lineId: line.id }, { status: 403 })
+    }
+
+    const results = await prisma.$transaction(
       parsed.data.items.map((item) =>
         prisma.otPlan.upsert({
           where: {
