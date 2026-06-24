@@ -2,6 +2,16 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 import useSWR from 'swr'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  Cell,
+  CartesianGrid,
+} from 'recharts'
 import { format, subDays } from 'date-fns'
 import { BarChart3, Loader2, Users, Package, Cog, Search, Download, Wrench, XCircle } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
@@ -70,6 +80,9 @@ export function ReportClient({ departments, divisions, sections }: Props) {
   const [sectionFilter, setSectionFilter] = useState('all')
   const [granularity, setGranularity] = useState<Granularity>('day')
   const [operatorSearch, setOperatorSearch] = useState('')
+  const [bdView, setBdView] = useState<'daily' | 'monthly' | 'yearly'>('daily')
+  const [heatmapYear, setHeatmapYear] = useState(() => new Date().getFullYear())
+  const [heatmapLineFilter, setHeatmapLineFilter] = useState('all')
 
   // Cascading lists
   const filteredDivisions = useMemo(
@@ -105,6 +118,30 @@ export function ReportClient({ departments, divisions, sections }: Props) {
   const { data, error, isLoading, isValidating } = useSWR(swrKey, fetcher, {
     keepPreviousData: true,
   })
+
+  // Separate year-scoped fetch for heatmap view — fires only when heatmap tab is active
+  const heatmapQs = useMemo(() => {
+    const p = new URLSearchParams({
+      from: `${heatmapYear}-01-01`,
+      to: `${heatmapYear}-12-31`,
+      granularity: 'day',
+    })
+    if (sectionFilter !== 'all') p.set('sectionId', sectionFilter)
+    else if (divisionFilter !== 'all') p.set('divisionId', divisionFilter)
+    else if (departmentFilter !== 'all') p.set('departmentId', departmentFilter)
+    return p.toString()
+  }, [heatmapYear, sectionFilter, divisionFilter, departmentFilter])
+
+  const { data: heatmapData, isLoading: heatmapLoading } = useSWR(
+    bdView === 'yearly' ? `/api/production/reports?${heatmapQs}` : null,
+    fetcher,
+    { keepPreviousData: true },
+  )
+  const heatmapRows: ByLineBreakdownRow[] = heatmapData?.byLineBreakdown ?? []
+  const availableHeatmapLines = useMemo(
+    () => [...new Set(heatmapRows.map((r) => r.lineCode))].sort(),
+    [heatmapRows],
+  )
 
   const payload = rangeOk ? data : undefined
   const byOperator = payload?.byOperator ?? []
@@ -379,9 +416,9 @@ export function ReportClient({ departments, divisions, sections }: Props) {
           <div className="flex rounded-lg border border-slate-200 p-0.5">
             <button
               type="button"
-              onClick={() => setGranularity('day')}
+              onClick={() => { setGranularity('day'); setBdView('daily') }}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                granularity === 'day' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+                bdView === 'daily' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               {th ? 'รายวัน' : 'Daily'}
@@ -390,17 +427,24 @@ export function ReportClient({ departments, divisions, sections }: Props) {
               type="button"
               onClick={() => {
                 setGranularity('month')
+                setBdView('monthly')
                 const r = monthPickerToRange(dateFrom.slice(0, 7))
-                if (r) {
-                  setDateFrom(r.from)
-                  setDateTo(r.to)
-                }
+                if (r) { setDateFrom(r.from); setDateTo(r.to) }
               }}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                granularity === 'month' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+                bdView === 'monthly' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               {th ? 'รายเดือน' : 'Monthly'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBdView('yearly')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                bdView === 'yearly' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {th ? 'รายปี' : 'Yearly'}
             </button>
           </div>
         </div>
@@ -612,31 +656,54 @@ export function ReportClient({ departments, divisions, sections }: Props) {
               icon={<Wrench className="text-orange-600" size={20} />}
               title={th ? 'Breakdown — สรุปตามไลน์การผลิต' : 'Breakdown — summary by production line'}
               subtitle={
-                th
-                  ? 'นับจากรายการ Breakdown ที่บันทึกในช่วงที่เลือก แยกตามไลน์และช่วงเวลา'
-                  : 'Breakdown events recorded in the selected period, grouped by line.'
+                bdView === 'daily'
+                  ? th
+                    ? 'นับจากรายการ Breakdown ที่บันทึกในช่วงที่เลือก แยกตามไลน์และวัน'
+                    : 'Breakdown events in the selected period, grouped by line and day.'
+                  : bdView === 'monthly'
+                    ? th
+                      ? 'นับจากรายการ Breakdown ที่บันทึกในช่วงที่เลือก แยกตามไลน์และเดือน'
+                      : 'Breakdown events in the selected period, grouped by line and month.'
+                    : th
+                      ? 'Heatmap รายวัน + กราฟแท่งรายเดือน + ตาราง Pivot แยกตามสายการผลิต'
+                      : 'Daily heatmap, monthly bar chart, and pivot table by production line.'
               }
             >
-              <BreakdownSummaryCards rows={byLineBreakdown} th={th} />
-              <SimpleTable
-                empty={th ? 'ไม่มีข้อมูล Breakdown ในช่วงนี้' : 'No breakdown data in selected period'}
-                cols={[
-                  th ? 'ไลน์' : 'Line',
-                  periodLabel,
-                  th ? 'ครั้ง' : '# Events',
-                  th ? 'เวลารวม (นาที)' : 'Total (min)',
-                  th ? 'เฉลี่ย/ครั้ง (นาที)' : 'Avg/event (min)',
-                  th ? 'หมวดหมู่หลัก' : 'Top Category',
-                ]}
-                rows={byLineBreakdown.map((r) => [
-                  r.lineCode,
-                  r.period,
-                  r.bdCount.toLocaleString(),
-                  r.bdMin.toLocaleString(),
-                  r.bdCount > 0 ? Math.round(r.bdMin / r.bdCount).toLocaleString() : '—',
-                  r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '—',
-                ])}
-              />
+              {(bdView === 'daily' || bdView === 'monthly') ? (
+                <>
+                  <BreakdownSummaryCards rows={byLineBreakdown} th={th} />
+                  <SimpleTable
+                    empty={th ? 'ไม่มีข้อมูล Breakdown ในช่วงนี้' : 'No breakdown data in selected period'}
+                    cols={[
+                      th ? 'ไลน์' : 'Line',
+                      periodLabel,
+                      th ? 'ครั้ง' : '# Events',
+                      th ? 'เวลารวม (นาที)' : 'Total (min)',
+                      th ? 'เฉลี่ย/ครั้ง (นาที)' : 'Avg/event (min)',
+                      th ? 'หมวดหมู่หลัก' : 'Top Category',
+                    ]}
+                    rows={byLineBreakdown.map((r) => [
+                      r.lineCode,
+                      r.period,
+                      r.bdCount.toLocaleString(),
+                      r.bdMin.toLocaleString(),
+                      r.bdCount > 0 ? Math.round(r.bdMin / r.bdCount).toLocaleString() : '—',
+                      r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '—',
+                    ])}
+                  />
+                </>
+              ) : (
+                <BreakdownYearlyView
+                  rows={heatmapRows}
+                  year={heatmapYear}
+                  setYear={setHeatmapYear}
+                  lineFilter={heatmapLineFilter}
+                  setLineFilter={setHeatmapLineFilter}
+                  availableLines={availableHeatmapLines}
+                  isLoading={heatmapLoading}
+                  th={th}
+                />
+              )}
             </ReportSection>
           </TabsContent>
 
@@ -711,26 +778,92 @@ function BreakdownSummaryCards({ rows, th }: { rows: ByLineBreakdownRow[]; th: b
   const totalMin = rows.reduce((s, r) => s + r.bdMin, 0)
   const avgMin = totalCount > 0 ? Math.round(totalMin / totalCount) : 0
   if (rows.length === 0) return null
+
+  // Aggregate categories across all line×period rows
+  const catMap = new Map<string, { categoryId: string; code: string; name: string; count: number; bdMin: number }>()
+  for (const row of rows) {
+    for (const cat of row.categories) {
+      const existing = catMap.get(cat.categoryId)
+      if (existing) {
+        existing.count += cat.count
+        existing.bdMin += cat.bdMin
+      } else {
+        catMap.set(cat.categoryId, { ...cat })
+      }
+    }
+  }
+  const rankedCats = Array.from(catMap.values()).sort((a, b) => b.bdMin - a.bdMin)
+
   return (
-    <div className="mb-4 flex flex-wrap gap-3 px-2">
-      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
-        <p className="text-xs text-orange-600">{th ? 'จำนวนครั้ง' : 'Total Events'}</p>
-        <p className="text-2xl font-bold text-orange-700">{totalCount.toLocaleString()}</p>
+    <div className="mb-4 space-y-4 px-2">
+      <div className="flex flex-wrap gap-3">
+        <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+          <p className="text-xs text-orange-600">{th ? 'จำนวนครั้ง' : 'Total Events'}</p>
+          <p className="text-2xl font-bold text-orange-700">{totalCount.toLocaleString()}</p>
+        </div>
+        <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+          <p className="text-xs text-orange-600">{th ? 'เวลาหยุดรวม' : 'Total Downtime'}</p>
+          <p className="text-2xl font-bold text-orange-700">
+            {totalMin >= 60
+              ? `${(totalMin / 60).toFixed(1)} ${th ? 'ชม.' : 'hr'}`
+              : `${totalMin} ${th ? 'นาที' : 'min'}`}
+          </p>
+        </div>
+        <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+          <p className="text-xs text-orange-600">{th ? 'เฉลี่ย/ครั้ง' : 'Avg/Event'}</p>
+          <p className="text-2xl font-bold text-orange-700">
+            {avgMin} {th ? 'นาที' : 'min'}
+          </p>
+        </div>
       </div>
-      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
-        <p className="text-xs text-orange-600">{th ? 'เวลาหยุดรวม' : 'Total Downtime'}</p>
-        <p className="text-2xl font-bold text-orange-700">
-          {totalMin >= 60
-            ? `${(totalMin / 60).toFixed(1)} ${th ? 'ชม.' : 'hr'}`
-            : `${totalMin} ${th ? 'นาที' : 'min'}`}
-        </p>
-      </div>
-      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-center">
-        <p className="text-xs text-orange-600">{th ? 'เฉลี่ย/ครั้ง' : 'Avg/Event'}</p>
-        <p className="text-2xl font-bold text-orange-700">
-          {avgMin} {th ? 'นาที' : 'min'}
-        </p>
-      </div>
+      {rankedCats.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {th ? 'สรุปตามหมวดหมู่' : 'Category Summary'}
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-orange-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-orange-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-orange-700">#</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-orange-700">
+                    {th ? 'หมวดหมู่' : 'Category'}
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-orange-700">
+                    {th ? 'ครั้ง' : 'Events'}
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-orange-700">
+                    {th ? 'เวลารวม (นาที)' : 'Total (min)'}
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-orange-700">
+                    {th ? 'เฉลี่ย/ครั้ง (นาที)' : 'Avg/event (min)'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rankedCats.map((cat, i) => (
+                  <tr key={cat.categoryId} className={i % 2 === 0 ? 'bg-white' : 'bg-orange-50/40'}>
+                    <td className="px-3 py-2 text-xs font-medium text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-2 text-slate-800">
+                      <span className="mr-1.5 font-mono text-xs text-orange-600">{cat.code}</span>
+                      {cat.name}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-slate-700">
+                      {cat.count.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-700">
+                      {cat.bdMin.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-500">
+                      {cat.count > 0 ? Math.round(cat.bdMin / cat.count).toLocaleString() : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -740,18 +873,883 @@ function NgSummaryCards({ rows, th }: { rows: ByLineNgRow[]; th: boolean }) {
   const totalOk = rows.reduce((s, r) => s + r.okQty, 0)
   const overallRate = totalNg + totalOk > 0 ? totalNg / (totalNg + totalOk) : 0
   if (rows.length === 0) return null
+
+  // Aggregate categories across all line×period rows
+  const catMap = new Map<string, { categoryId: string; code: string; name: string; ngQty: number }>()
+  for (const row of rows) {
+    for (const cat of row.categories) {
+      const existing = catMap.get(cat.categoryId)
+      if (existing) {
+        existing.ngQty += cat.ngQty
+      } else {
+        catMap.set(cat.categoryId, { ...cat })
+      }
+    }
+  }
+  const rankedCats = Array.from(catMap.values()).sort((a, b) => b.ngQty - a.ngQty)
+
   return (
-    <div className="mb-4 flex flex-wrap gap-3 px-2">
-      <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
-        <p className="text-xs text-red-600">{th ? 'Defect รวม (ชิ้น)' : 'Total Defect qty'}</p>
-        <p className="text-2xl font-bold text-red-700">{totalNg.toLocaleString()}</p>
+    <div className="mb-4 space-y-4 px-2">
+      <div className="flex flex-wrap gap-3">
+        <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
+          <p className="text-xs text-red-600">{th ? 'Defect รวม (ชิ้น)' : 'Total Defect qty'}</p>
+          <p className="text-2xl font-bold text-red-700">{totalNg.toLocaleString()}</p>
+        </div>
+        <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
+          <p className="text-xs text-red-600">{th ? 'Defect Rate รวม' : 'Overall Defect Rate'}</p>
+          <p className={`text-2xl font-bold ${overallRate >= 0.05 ? 'text-red-700' : overallRate >= 0.02 ? 'text-amber-700' : 'text-emerald-700'}`}>
+            {(overallRate * 100).toFixed(2)}%
+          </p>
+        </div>
       </div>
-      <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center">
-        <p className="text-xs text-red-600">{th ? 'Defect Rate รวม' : 'Overall Defect Rate'}</p>
-        <p className={`text-2xl font-bold ${overallRate >= 0.05 ? 'text-red-700' : overallRate >= 0.02 ? 'text-amber-700' : 'text-emerald-700'}`}>
-          {(overallRate * 100).toFixed(2)}%
+      {rankedCats.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {th ? 'สรุปตามหมวดหมู่' : 'Category Summary'}
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-red-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-red-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-red-700">#</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-red-700">
+                    {th ? 'หมวดหมู่' : 'Category'}
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-red-700">
+                    {th ? 'Defect (ชิ้น)' : 'Defect qty'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rankedCats.map((cat, i) => (
+                  <tr key={cat.categoryId} className={i % 2 === 0 ? 'bg-white' : 'bg-red-50/40'}>
+                    <td className="px-3 py-2 text-xs font-medium text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-2 text-slate-800">
+                      <span className="mr-1.5 font-mono text-xs text-red-600">{cat.code}</span>
+                      {cat.name}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-slate-700">
+                      {cat.ngQty.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const BD_YEARLY_MONTHS_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const BD_YEARLY_MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+type YearlyMonthEntry = {
+  monthKey: string
+  monthNum: number
+  label: string
+  bdCount: number
+  bdMin: number
+  topCatLabel: string
+}
+
+type YearlyViewProps = {
+  rows: ByLineBreakdownRow[]
+  year: number
+  setYear: (y: number) => void
+  lineFilter: string
+  setLineFilter: (l: string) => void
+  availableLines: string[]
+  isLoading: boolean
+  th: boolean
+}
+
+function BreakdownMonthlyList({ rows, year, setYear, lineFilter, setLineFilter, availableLines, isLoading, th }: YearlyViewProps) {
+  const [metric, setMetric] = useState<'count' | 'min'>('min')
+  const MONTHS = th ? BD_YEARLY_MONTHS_TH : BD_YEARLY_MONTHS_EN
+  const thisYear = new Date().getFullYear()
+  const yearOptions = Array.from({ length: thisYear - 2019 }, (_, i) => thisYear - i)
+
+  type LineMonthEntry = {
+    lineCode: string
+    monthIdx: number
+    bdCount: number
+    bdMin: number
+    topCatLabel: string
+  }
+
+  const tableRows = useMemo((): LineMonthEntry[] => {
+    type Agg = { bdCount: number; bdMin: number; catMap: Map<string, { code: string; name: string; bdMin: number }> }
+    const map = new Map<string, Agg>()
+
+    for (const row of rows) {
+      if (lineFilter !== 'all' && row.lineCode !== lineFilter) continue
+      const mi = parseInt(row.period.slice(5, 7)) - 1
+      const key = `${row.lineCode}::${mi}`
+      if (!map.has(key)) map.set(key, { bdCount: 0, bdMin: 0, catMap: new Map() })
+      const m = map.get(key)!
+      m.bdCount += row.bdCount
+      m.bdMin += row.bdMin
+      for (const cat of row.categories) {
+        const ex = m.catMap.get(cat.categoryId)
+        if (ex) ex.bdMin += cat.bdMin
+        else m.catMap.set(cat.categoryId, { code: cat.code, name: cat.name, bdMin: cat.bdMin })
+      }
+    }
+
+    const lines = Array.from(new Set(rows.filter(r => lineFilter === 'all' || r.lineCode === lineFilter).map(r => r.lineCode))).sort()
+    const result: LineMonthEntry[] = []
+    for (const lineCode of lines) {
+      for (let mi = 0; mi < 12; mi++) {
+        const key = `${lineCode}::${mi}`
+        const agg = map.get(key)
+        const topCat = agg ? Array.from(agg.catMap.values()).sort((a, b) => b.bdMin - a.bdMin)[0] ?? null : null
+        result.push({
+          lineCode,
+          monthIdx: mi,
+          bdCount: agg?.bdCount ?? 0,
+          bdMin: agg?.bdMin ?? 0,
+          topCatLabel: topCat ? `${topCat.code} — ${topCat.name}` : '',
+        })
+      }
+    }
+    return result
+  }, [rows, lineFilter])
+
+  const totalCount = tableRows.reduce((s, r) => s + r.bdCount, 0)
+  const totalMin = tableRows.reduce((s, r) => s + r.bdMin, 0)
+  const maxVal = Math.max(...tableRows.map(r => metric === 'count' ? r.bdCount : r.bdMin), 0)
+
+  return (
+    <div className="space-y-4 p-2">
+      {/* Controls */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'ปี' : 'Year'}</label>
+          <select value={year} onChange={(e) => setYear(Number(e.target.value))}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400">
+            {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'ไลน์' : 'Line'}</label>
+          <select value={lineFilter} onChange={(e) => setLineFilter(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400">
+            <option value="all">{th ? 'ทุกไลน์' : 'All lines'}</option>
+            {availableLines.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'แสดงผล' : 'Metric'}</label>
+          <div className="flex rounded-lg border border-slate-200 p-0.5">
+            {(['min', 'count'] as const).map((m) => (
+              <button key={m} type="button" onClick={() => setMetric(m)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${metric === m ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                {m === 'min' ? (th ? 'เวลารวม (นาที)' : 'Downtime (min)') : (th ? 'จำนวนครั้ง' : 'Events')}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+        </div>
+      ) : totalCount === 0 ? (
+        <p className="py-10 text-center text-sm text-slate-400">
+          {th ? 'ไม่มีข้อมูล Breakdown ในปีนี้' : 'No breakdown data this year'}
         </p>
+      ) : (
+        <>
+          {/* Summary chips */}
+          <div className="flex gap-4">
+            <div className="rounded-xl border border-slate-100 bg-white px-5 py-3">
+              <p className="text-xs text-slate-500">{th ? 'รวมทั้งปี (ครั้ง)' : 'Total events'}</p>
+              <p className="mt-0.5 text-2xl font-bold text-slate-800">{totalCount.toLocaleString()}</p>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-white px-5 py-3">
+              <p className="text-xs text-slate-500">{th ? 'เวลาหยุดรวม (นาที)' : 'Total downtime (min)'}</p>
+              <p className="mt-0.5 text-2xl font-bold text-orange-600">{totalMin.toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="sticky left-0 bg-slate-50 px-4 py-2.5 text-left text-xs font-semibold text-slate-500">{th ? 'ไลน์' : 'Line'}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">{th ? 'เดือน' : 'Month'}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">{th ? 'ครั้ง' : 'Events'}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">{th ? 'เวลารวม (นาที)' : 'Downtime (min)'}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">{th ? 'เฉลี่ย/ครั้ง' : 'Avg/event'}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">{th ? 'หมวดหมู่หลัก' : 'Top Category'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map((r, idx) => {
+                  const val = metric === 'count' ? r.bdCount : r.bdMin
+                  const isMax = val === maxVal && val > 0
+                  const isEmpty = r.bdCount === 0
+                  const prevLine = idx > 0 ? tableRows[idx - 1].lineCode : null
+                  const isLineStart = r.lineCode !== prevLine
+                  return (
+                    <tr key={`${r.lineCode}-${r.monthIdx}`}
+                      className={isMax ? 'bg-orange-50' : isEmpty ? 'opacity-30' : 'hover:bg-slate-50/70'}>
+                      <td className={`sticky left-0 bg-inherit px-4 py-1.5 font-medium text-slate-700 ${isLineStart ? 'pt-3' : ''}`}>
+                        {isLineStart ? r.lineCode : ''}
+                      </td>
+                      <td className="px-4 py-1.5 text-slate-500">{MONTHS[r.monthIdx]}</td>
+                      <td className="px-4 py-1.5 text-right text-slate-700">{r.bdCount > 0 ? r.bdCount.toLocaleString() : '—'}</td>
+                      <td className="px-4 py-1.5 text-right font-semibold text-orange-700">{r.bdMin > 0 ? r.bdMin.toLocaleString() : '—'}</td>
+                      <td className="px-4 py-1.5 text-right text-slate-500">{r.bdCount > 0 ? Math.round(r.bdMin / r.bdCount).toLocaleString() : '—'}</td>
+                      <td className="px-4 py-1.5 text-slate-400 text-xs">{r.topCatLabel || '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot className="border-t border-slate-200 bg-slate-50">
+                <tr>
+                  <td colSpan={2} className="px-4 py-2.5 text-xs font-bold text-slate-700">{th ? 'รวมทั้งปี' : 'Total'}</td>
+                  <td className="px-4 py-2.5 text-right text-xs font-bold text-slate-700">{totalCount.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right text-xs font-bold text-orange-700">{totalMin.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right text-xs font-bold text-slate-500">
+                    {totalCount > 0 ? Math.round(totalMin / totalCount).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-2.5" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, availableLines, isLoading, th }: YearlyViewProps) {
+  const [metric, setMetric] = useState<'count' | 'min'>('min')
+  const MONTHS = th ? BD_YEARLY_MONTHS_TH : BD_YEARLY_MONTHS_EN
+
+  const monthly = useMemo((): YearlyMonthEntry[] => {
+    type MonthAgg = {
+      bdCount: number
+      bdMin: number
+      catMap: Map<string, { code: string; name: string; count: number; bdMin: number }>
+    }
+    const map = new Map<string, MonthAgg>()
+    for (const row of rows) {
+      if (lineFilter !== 'all' && row.lineCode !== lineFilter) continue
+      const mk = row.period.slice(0, 7)
+      if (!map.has(mk)) map.set(mk, { bdCount: 0, bdMin: 0, catMap: new Map() })
+      const m = map.get(mk)!
+      m.bdCount += row.bdCount
+      m.bdMin += row.bdMin
+      for (const cat of row.categories) {
+        const ex = m.catMap.get(cat.categoryId)
+        if (ex) { ex.count += cat.count; ex.bdMin += cat.bdMin }
+        else m.catMap.set(cat.categoryId, { code: cat.code, name: cat.name, count: cat.count, bdMin: cat.bdMin })
+      }
+    }
+    return Array.from({ length: 12 }, (_, i) => {
+      const mk = `${year}-${String(i + 1).padStart(2, '0')}`
+      const agg = map.get(mk)
+      const topCat = agg
+        ? Array.from(agg.catMap.values()).sort((a, b) => b.bdMin - a.bdMin)[0] ?? null
+        : null
+      return {
+        monthKey: mk,
+        monthNum: i + 1,
+        label: MONTHS[i],
+        bdCount: agg?.bdCount ?? 0,
+        bdMin: agg?.bdMin ?? 0,
+        topCatLabel: topCat ? `${topCat.code} — ${topCat.name}` : '',
+      }
+    })
+  }, [rows, lineFilter, year, MONTHS])
+
+  const totalCount = monthly.reduce((s, m) => s + m.bdCount, 0)
+  const totalMin = monthly.reduce((s, m) => s + m.bdMin, 0)
+
+  const thisYear = new Date().getFullYear()
+  const yearOptions = Array.from({ length: thisYear - 2019 }, (_, i) => thisYear - i)
+
+  // Pivot: lines × months
+  const pivot = useMemo(() => {
+    type LineAgg = { bdCount: number[]; bdMin: number[] }
+    const lineMap = new Map<string, LineAgg>()
+
+    for (const row of rows) {
+      if (lineFilter !== 'all' && row.lineCode !== lineFilter) continue
+      const mi = parseInt(row.period.slice(5, 7)) - 1
+      if (!lineMap.has(row.lineCode)) {
+        lineMap.set(row.lineCode, { bdCount: Array(12).fill(0), bdMin: Array(12).fill(0) })
+      }
+      const la = lineMap.get(row.lineCode)!
+      la.bdCount[mi] += row.bdCount
+      la.bdMin[mi] += row.bdMin
+    }
+
+    const lineRows = Array.from(lineMap.entries())
+      .map(([lineCode, la]) => ({
+        lineCode,
+        values: metric === 'count' ? la.bdCount : la.bdMin,
+        total: (metric === 'count' ? la.bdCount : la.bdMin).reduce((s, v) => s + v, 0),
+      }))
+      .sort((a, b) => a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true }))
+
+    const colTotals = Array.from({ length: 12 }, (_, mi) =>
+      lineRows.reduce((s, r) => s + r.values[mi], 0)
+    )
+    const grandTotal = colTotals.reduce((s, v) => s + v, 0)
+    const maxCell = Math.max(...lineRows.flatMap(r => r.values), 0)
+
+    return { lineRows, colTotals, grandTotal, maxCell }
+  }, [rows, lineFilter, metric])
+
+  const dataKey = metric === 'count' ? 'bdCount' : 'bdMin'
+  const yLabel = metric === 'count'
+    ? (th ? 'ครั้ง' : 'Events')
+    : (th ? 'นาที' : 'Min')
+
+  function customTooltip({ active, payload }: { active?: boolean; payload?: { payload: YearlyMonthEntry }[] }) {
+    if (!active || !payload?.length) return null
+    const d = payload[0].payload
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-md text-xs">
+        <p className="mb-1 font-semibold text-slate-700">{d.label} {year}</p>
+        <p className="text-orange-600">
+          {d.bdCount.toLocaleString()} {th ? 'ครั้ง' : 'events'}
+          {' · '}
+          {d.bdMin.toLocaleString()} {th ? 'นาที' : 'min'}
+        </p>
+        {d.bdCount > 0 && (
+          <p className="text-slate-500">
+            {th ? 'เฉลี่ย' : 'Avg'}: {Math.round(d.bdMin / d.bdCount).toLocaleString()} {th ? 'นาที/ครั้ง' : 'min/event'}
+          </p>
+        )}
+        {d.topCatLabel && (
+          <p className="mt-0.5 text-slate-400">{th ? 'หมวด' : 'Category'}: {d.topCatLabel}</p>
+        )}
       </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 p-2">
+      {/* Controls */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'ปี' : 'Year'}</label>
+          <select
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+          >
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'ไลน์' : 'Line'}</label>
+          <select
+            value={lineFilter}
+            onChange={(e) => setLineFilter(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+          >
+            <option value="all">{th ? 'ทุกไลน์' : 'All lines'}</option>
+            {availableLines.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">{th ? 'แสดงผล' : 'Metric'}</label>
+          <div className="flex rounded-lg border border-slate-200 p-0.5">
+            <button
+              type="button"
+              onClick={() => setMetric('min')}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                metric === 'min' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {th ? 'เวลารวม (นาที)' : 'Downtime (min)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetric('count')}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                metric === 'count' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {th ? 'จำนวนครั้ง' : 'Events'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Heatmap + Bar chart — side by side */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Heatmap */}
+        <div className="rounded-xl border border-slate-100 bg-white p-4">
+          <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {th ? 'Heatmap รายวัน' : 'Daily Heatmap'}
+          </p>
+          <BreakdownHeatmap
+            rows={rows}
+            year={year}
+            setYear={setYear}
+            lineFilter={lineFilter}
+            setLineFilter={setLineFilter}
+            metric={metric}
+            setMetric={setMetric}
+            availableLines={availableLines}
+            isLoading={isLoading}
+            th={th}
+            hideControls
+          />
+        </div>
+
+        {/* Bar chart */}
+        <div className="rounded-xl border border-slate-100 bg-white p-4">
+          <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {th ? 'สรุปรายเดือน' : 'Monthly Summary'}
+          </p>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+            </div>
+          ) : totalCount === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-400">
+              {th ? 'ไม่มีข้อมูล Breakdown ในปีนี้' : 'No breakdown data this year'}
+            </p>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="25%">
+                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={40}
+                    tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                  />
+                  <RechartsTooltip
+                    content={({ active, payload }) =>
+                      customTooltip({
+                        active: active as boolean | undefined,
+                        payload: payload as { payload: YearlyMonthEntry }[] | undefined,
+                      })
+                    }
+                    cursor={{ fill: '#fef3c7', opacity: 0.5 }}
+                  />
+                  <Bar dataKey={dataKey} radius={[4, 4, 0, 0]} maxBarSize={40}>
+                    {monthly.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={entry[dataKey] > 0 ? '#f97316' : '#e2e8f0'}
+                        fillOpacity={entry[dataKey] > 0 ? 1 : 0.75}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="mt-1 text-center text-xs text-slate-400">{yLabel}</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Pivot table: lines × months */}
+      {!isLoading && (
+        <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="sticky left-0 bg-slate-50 px-4 py-2.5 text-left text-xs font-semibold text-slate-500 min-w-[100px]">
+                    {th ? 'สายการผลิต' : 'Line'}
+                  </th>
+                  {MONTHS.map((m, i) => (
+                    <th key={i} className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500 min-w-[52px]">
+                      {m}
+                    </th>
+                  ))}
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-orange-600 min-w-[60px]">
+                    {th ? 'รวม' : 'Total'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pivot.lineRows.map((lr) => (
+                  <tr key={lr.lineCode} className="hover:bg-slate-50/70">
+                    <td className="sticky left-0 bg-inherit px-4 py-2 font-medium text-slate-700">{lr.lineCode}</td>
+                    {lr.values.map((v, mi) => {
+                      const isMax = v === pivot.maxCell && v > 0
+                      return (
+                        <td key={mi}
+                          className={`px-3 py-2 text-center text-xs ${
+                            isMax ? 'font-bold text-orange-700 bg-orange-50' : v > 0 ? 'text-slate-700' : 'text-slate-300'
+                          }`}>
+                          {v > 0 ? v.toLocaleString() : '—'}
+                        </td>
+                      )
+                    })}
+                    <td className="px-4 py-2 text-right text-xs font-semibold text-orange-700">
+                      {lr.total > 0 ? lr.total.toLocaleString() : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {pivot.lineRows.length > 0 && (
+                <tfoot className="border-t-2 border-slate-200 bg-slate-50">
+                  <tr>
+                    <td className="sticky left-0 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700">
+                      {th ? 'รวมทุกไลน์' : 'All lines'}
+                    </td>
+                    {pivot.colTotals.map((v, mi) => (
+                      <td key={mi} className={`px-3 py-2.5 text-center text-xs font-bold ${v > 0 ? 'text-orange-700' : 'text-slate-300'}`}>
+                        {v > 0 ? v.toLocaleString() : '—'}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2.5 text-right text-xs font-bold text-orange-700">
+                      {pivot.grandTotal > 0 ? pivot.grandTotal.toLocaleString() : '—'}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+      )}
+    </div>
+  )
+}
+
+const BD_HEATMAP_MONTHS_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const BD_HEATMAP_MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const BD_HEATMAP_DAYS_TH = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+const BD_HEATMAP_DAYS_EN = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+
+function BreakdownHeatmap({
+  rows,
+  year,
+  setYear,
+  lineFilter,
+  setLineFilter,
+  metric,
+  setMetric,
+  availableLines,
+  isLoading,
+  th,
+  hideControls = false,
+}: {
+  rows: ByLineBreakdownRow[]
+  year: number
+  setYear: (y: number) => void
+  lineFilter: string
+  setLineFilter: (l: string) => void
+  metric: 'count' | 'min'
+  setMetric: (m: 'count' | 'min') => void
+  availableLines: string[]
+  isLoading: boolean
+  th: boolean
+  hideControls?: boolean
+}) {
+  const MONTHS = th ? BD_HEATMAP_MONTHS_TH : BD_HEATMAP_MONTHS_EN
+  const DAY_LABELS = th ? BD_HEATMAP_DAYS_TH : BD_HEATMAP_DAYS_EN
+
+  // Floating tooltip state — tracks hovered cell + cursor position (fixed coords)
+  const [tooltip, setTooltip] = useState<{ date: string; x: number; y: number } | null>(null)
+
+  // Aggregate rows → per-day totals
+  const dayMap = useMemo(() => {
+    const map = new Map<string, { bdCount: number; bdMin: number; topCat: string }>()
+    for (const row of rows) {
+      if (lineFilter !== 'all' && row.lineCode !== lineFilter) continue
+      const existing = map.get(row.period)
+      if (existing) {
+        existing.bdCount += row.bdCount
+        existing.bdMin += row.bdMin
+        if (!existing.topCat && row.topCategory) existing.topCat = row.topCategory.name
+      } else {
+        map.set(row.period, {
+          bdCount: row.bdCount,
+          bdMin: row.bdMin,
+          topCat: row.topCategory?.name ?? '',
+        })
+      }
+    }
+    return map
+  }, [rows, lineFilter])
+
+  const maxValue = useMemo(() => {
+    let max = 0
+    for (const v of dayMap.values()) {
+      const val = metric === 'count' ? v.bdCount : v.bdMin
+      if (val > max) max = val
+    }
+    return max
+  }, [dayMap, metric])
+
+  // Build 52–53 week grid + month label spans for the given year
+  const { weeks, monthSpans } = useMemo(() => {
+    const jan1 = new Date(Date.UTC(year, 0, 1))
+    const jan1Dow = (jan1.getUTCDay() + 6) % 7 // Mon=0 … Sun=6
+    const nextJan1 = new Date(Date.UTC(year + 1, 0, 1))
+    const daysInYear = (nextJan1.getTime() - jan1.getTime()) / 86400000
+    const totalWeeks = Math.ceil((jan1Dow + daysInYear) / 7)
+
+    const weeksArr: (string | null)[][] = []
+    for (let w = 0; w < totalWeeks; w++) {
+      const week: (string | null)[] = []
+      for (let d = 0; d < 7; d++) {
+        const dayIndex = w * 7 + d - jan1Dow
+        if (dayIndex < 0 || dayIndex >= daysInYear) {
+          week.push(null)
+        } else {
+          week.push(new Date(Date.UTC(year, 0, 1 + dayIndex)).toISOString().slice(0, 10))
+        }
+      }
+      weeksArr.push(week)
+    }
+
+    // Month label spans — partition week columns without overlap
+    const monthStartWeeks: number[] = []
+    for (let m = 0; m < 12; m++) {
+      const dayIdx = (new Date(Date.UTC(year, m, 1)).getTime() - jan1.getTime()) / 86400000
+      monthStartWeeks.push(Math.floor((dayIdx + jan1Dow) / 7))
+    }
+    monthStartWeeks.push(totalWeeks)
+
+    const spans: { month: number; span: number }[] = []
+    for (let m = 0; m < 12; m++) {
+      spans.push({ month: m, span: monthStartWeeks[m + 1] - monthStartWeeks[m] })
+    }
+
+    return { weeks: weeksArr, monthSpans: spans }
+  }, [year])
+
+  function getColorClass(value: number): string {
+    if (value === 0 || maxValue === 0) return 'bg-slate-100 hover:bg-slate-200'
+    const r = value / maxValue
+    if (r <= 0.25) return 'bg-orange-100 hover:bg-orange-200'
+    if (r <= 0.50) return 'bg-orange-300 hover:bg-orange-400'
+    if (r <= 0.75) return 'bg-orange-500 hover:bg-orange-600'
+    return 'bg-orange-700 hover:bg-orange-800'
+  }
+
+  const CELL = 16 // px — enlarged for readability
+  const GAP = 3  // px
+  const STEP = CELL + GAP
+  const LABEL_COL = 30 // px for day-of-week labels
+
+  const thisYear = new Date().getFullYear()
+  const yearOptions = Array.from({ length: thisYear - 2019 }, (_, i) => thisYear - i)
+
+  // Tooltip content derived from hovered date
+  const tooltipEntry = tooltip ? dayMap.get(tooltip.date) : undefined
+  const tooltipDateLabel = tooltip
+    ? new Date(tooltip.date + 'T00:00:00Z').toLocaleDateString(th ? 'th-TH' : 'en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      })
+    : ''
+
+  return (
+    <div className="space-y-4 p-2">
+      {!hideControls && (
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">{th ? 'ปี' : 'Year'}</label>
+            <select
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">{th ? 'ไลน์' : 'Line'}</label>
+            <select
+              value={lineFilter}
+              onChange={(e) => setLineFilter(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-blue-400"
+            >
+              <option value="all">{th ? 'ทุกไลน์' : 'All lines'}</option>
+              {availableLines.map((l) => (
+                <option key={l} value={l}>{l}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">{th ? 'แสดงผล' : 'Metric'}</label>
+            <div className="flex rounded-lg border border-slate-200 p-0.5">
+              <button
+                type="button"
+                onClick={() => setMetric('count')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  metric === 'count' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {th ? 'ครั้ง' : 'Events'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetric('min')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  metric === 'min' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {th ? 'นาที' : 'Minutes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading state */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto pb-1">
+          <div className="inline-flex flex-col" style={{ gap: `${GAP}px` }}>
+            {/* Month label row */}
+            <div
+              className="flex"
+              style={{ marginLeft: `${LABEL_COL + GAP}px`, gap: `${GAP}px` }}
+            >
+              {monthSpans.map(({ month, span }) => (
+                <div
+                  key={month}
+                  className="truncate text-xs font-medium text-slate-500"
+                  style={{ width: `${span * CELL + Math.max(0, span - 1) * GAP}px` }}
+                >
+                  {MONTHS[month]}
+                </div>
+              ))}
+            </div>
+
+            {/* Day-of-week labels + week columns */}
+            <div className="flex" style={{ gap: `${GAP}px` }}>
+              {/* Day labels */}
+              <div className="flex flex-col" style={{ gap: `${GAP}px`, width: `${LABEL_COL}px` }}>
+                {DAY_LABELS.map((label, d) => (
+                  <div
+                    key={d}
+                    className="flex items-center justify-end pr-1 text-[11px] text-slate-400"
+                    style={{ height: `${CELL}px` }}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              {/* Week columns */}
+              {weeks.map((week, w) => (
+                <div key={w} className="flex flex-col" style={{ gap: `${GAP}px` }}>
+                  {week.map((date, d) => {
+                    if (!date) {
+                      return <div key={d} style={{ width: CELL, height: CELL }} />
+                    }
+                    const entry = dayMap.get(date)
+                    const value = entry ? (metric === 'count' ? entry.bdCount : entry.bdMin) : 0
+                    return (
+                      <div
+                        key={d}
+                        className={`cursor-pointer rounded-sm transition-colors ${getColorClass(value)}`}
+                        style={{ width: CELL, height: CELL }}
+                        onMouseEnter={(e) => {
+                          const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+                          setTooltip({ date, x: rect.left + rect.width / 2, y: rect.top })
+                        }}
+                        onMouseLeave={() => setTooltip(null)}
+                      />
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legend */}
+      {!isLoading && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400">{th ? 'น้อย' : 'Less'}</span>
+          {(['bg-slate-100', 'bg-orange-100', 'bg-orange-300', 'bg-orange-500', 'bg-orange-700'] as const).map(
+            (cls) => (
+              <div key={cls} className={`h-4 w-4 rounded-sm ${cls}`} />
+            ),
+          )}
+          <span className="text-xs text-slate-400">{th ? 'มาก' : 'More'}</span>
+          {maxValue > 0 && (
+            <span className="ml-2 text-xs text-slate-400">
+              {th
+                ? `สูงสุด: ${maxValue.toLocaleString()} ${metric === 'count' ? 'ครั้ง' : 'นาที'}`
+                : `Max: ${maxValue.toLocaleString()} ${metric === 'count' ? 'events' : 'min'}`}
+            </span>
+          )}
+          {rows.length === 0 && (
+            <span className="ml-2 text-xs text-slate-400">
+              {th ? 'ไม่มีข้อมูล Breakdown ในปีนี้' : 'No breakdown data this year'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Floating tooltip — position: fixed so it escapes overflow containers */}
+      {tooltip && (
+        <div
+          className="pointer-events-none fixed z-50 min-w-[10rem] max-w-[14rem] rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y - 8,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          <p className="mb-1 text-xs font-semibold text-slate-700">{tooltipDateLabel}</p>
+          {tooltipEntry ? (
+            <div className="space-y-0.5 text-xs text-slate-600">
+              <p>
+                <span className="font-medium text-orange-600">
+                  {tooltipEntry.bdCount.toLocaleString()}
+                </span>{' '}
+                {th ? 'ครั้ง' : 'events'}
+                {' · '}
+                <span className="font-medium text-orange-600">
+                  {tooltipEntry.bdMin.toLocaleString()}
+                </span>{' '}
+                {th ? 'นาที' : 'min'}
+              </p>
+              {tooltipEntry.topCat && (
+                <p className="truncate text-slate-400">
+                  {th ? 'หมวด: ' : 'Category: '}
+                  <span className="text-slate-600">{tooltipEntry.topCat}</span>
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">{th ? 'ไม่มี Breakdown' : 'No breakdown'}</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
