@@ -531,13 +531,14 @@ export async function GET(req: NextRequest) {
   const byLineNg = Array.from(ngLineMap.values())
     .map((e) => {
       const cats = Array.from(e.categories.values()).sort((a, b) => b.ngQty - a.ngQty)
-      const total = e.okQty + e.ngQty
+      const okQty = lineMap.get(`${e.lineId}|${e.period}`)?.okQty ?? e.okQty
+      const total = okQty + e.ngQty
       return {
         lineId: e.lineId,
         lineCode: e.lineCode,
         period: e.period,
         ngQty: e.ngQty,
-        okQty: e.okQty,
+        okQty,
         ngRate: total > 0 ? e.ngQty / total : 0,
         topCategory: cats[0] ?? null,
         categories: cats,
