@@ -32,6 +32,22 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+function linePermissionContext(line: {
+  id: string
+  section?: {
+    id: string
+    divisionId: string
+    division?: { departmentId: string } | null
+  } | null
+}) {
+  return {
+    lineId: line.id,
+    sectionId: line.section?.id ?? null,
+    divisionId: line.section?.divisionId ?? null,
+    departmentId: line.section?.division?.departmentId ?? null,
+  }
+}
+
 async function resolveLineWhere(
   lineId?: string,
   divisionId?: string,
@@ -83,14 +99,42 @@ export async function GET(req: NextRequest) {
   const lineWhere = await resolveLineWhere(lineIdParam, divisionIdParam)
   const lines = await prisma.line.findMany({
     where: lineWhere,
-    select: { id: true, lineCode: true, lineName: true },
+    select: {
+      id: true,
+      lineCode: true,
+      lineName: true,
+      section: {
+        select: {
+          id: true,
+          divisionId: true,
+          division: { select: { departmentId: true } },
+        },
+      },
+    },
     orderBy: { lineCode: 'asc' },
   })
-  const lineIds = lines.map((l) => l.id)
 
-  if (lineIds.length === 0) {
+  if (lines.length === 0) {
     return NextResponse.json({ data: [], mode, from: isoDate(from), to: isoDate(new Date(toExclusive.getTime() - 86400_000)) })
   }
+
+  const readableLines = (
+    await Promise.all(
+      lines.map(async (line) => {
+        const canRead = await checkPermissionForSession(session, 'api.production.otplan.read', {
+          apiPath: req.nextUrl.pathname,
+          ...linePermissionContext(line),
+        })
+        return canRead ? line : null
+      }),
+    )
+  ).filter((line): line is typeof lines[number] => line !== null)
+
+  if (readableLines.length === 0) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const lineIds = readableLines.map((l) => l.id)
 
   // ─── Fetch plan + actual + holidays in parallel ────────────────────────────
   // Actual OT hours counted per hourly_record:
@@ -164,7 +208,7 @@ export async function GET(req: NextRequest) {
       cur.setUTCDate(cur.getUTCDate() + 1)
     }
 
-    const data = lines.map((line) => {
+    const data = readableLines.map((line) => {
       let totalPlan = 0
       let totalActual = 0
       const dayData: Record<string, { plan: number; actual: number; remark: string | null }> = {}
@@ -194,7 +238,7 @@ export async function GET(req: NextRequest) {
   }
 
   // mode === 'year': aggregate by month
-  const data = lines.map((line) => {
+  const data = readableLines.map((line) => {
     const months: Record<string, { plan: number; actual: number; diff: number | null }> = {}
     let totalPlan = 0
     let totalActual = 0
@@ -259,7 +303,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
-    const results = await Promise.all(
+    const lineIds = [...new Set(parsed.data.items.map((item) => item.lineId))]
+    const lines = await prisma.line.findMany({
+      where: { id: { in: lineIds }, isActive: true },
+      select: {
+        id: true,
+        section: {
+          select: {
+            id: true,
+            divisionId: true,
+            division: { select: { departmentId: true } },
+          },
+        },
+      },
+    })
+    const lineById = new Map(lines.map((line) => [line.id, line]))
+    const missingLineId = lineIds.find((lineId) => !lineById.has(lineId))
+    if (missingLineId) {
+      return NextResponse.json({ error: 'Line not found or inactive', lineId: missingLineId }, { status: 400 })
+    }
+
+    for (const line of lines) {
+      const canWrite = await checkPermissionForSession(session, 'api.production.otplan.write', {
+        apiPath: req.nextUrl.pathname,
+        ...linePermissionContext(line),
+      })
+      if (!canWrite) return NextResponse.json({ error: 'Forbidden', lineId: line.id }, { status: 403 })
+    }
+
+    const results = await prisma.$transaction(
       parsed.data.items.map((item) =>
         prisma.otPlan.upsert({
           where: {
