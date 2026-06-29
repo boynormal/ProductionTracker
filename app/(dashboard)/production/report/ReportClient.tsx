@@ -132,12 +132,20 @@ export function ReportClient({ departments, divisions, sections }: Props) {
     return p.toString()
   }, [heatmapYear, sectionFilter, divisionFilter, departmentFilter])
 
-  const { data: heatmapData, isLoading: heatmapLoading } = useSWR(
+  const {
+    data: heatmapData,
+    error: heatmapError,
+    isLoading: heatmapLoading,
+    isValidating: heatmapValidating,
+  } = useSWR(
     bdView === 'yearly' ? `/api/production/reports?${heatmapQs}` : null,
     fetcher,
-    { keepPreviousData: true },
   )
-  const heatmapRows: ByLineBreakdownRow[] = heatmapData?.byLineBreakdown ?? []
+  const heatmapRows: ByLineBreakdownRow[] = heatmapError
+    ? []
+    : (heatmapData?.byLineBreakdown ?? []).filter((row: ByLineBreakdownRow) =>
+        row.period.startsWith(`${heatmapYear}-`),
+      )
   const availableHeatmapLines = useMemo(
     () => [...new Set(heatmapRows.map((r) => r.lineCode))].sort(),
     [heatmapRows],
@@ -700,7 +708,8 @@ export function ReportClient({ departments, divisions, sections }: Props) {
                   lineFilter={heatmapLineFilter}
                   setLineFilter={setHeatmapLineFilter}
                   availableLines={availableHeatmapLines}
-                  isLoading={heatmapLoading}
+                  isLoading={heatmapLoading || heatmapValidating}
+                  errorMessage={heatmapError?.message}
                   th={th}
                 />
               )}
@@ -962,6 +971,7 @@ type YearlyViewProps = {
   setLineFilter: (l: string) => void
   availableLines: string[]
   isLoading: boolean
+  errorMessage?: string
   th: boolean
 }
 
@@ -1128,7 +1138,7 @@ function BreakdownMonthlyList({ rows, year, setYear, lineFilter, setLineFilter, 
   )
 }
 
-function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, availableLines, isLoading, th }: YearlyViewProps) {
+function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, availableLines, isLoading, errorMessage, th }: YearlyViewProps) {
   const [metric, setMetric] = useState<'count' | 'min'>('min')
   const MONTHS = th ? BD_YEARLY_MONTHS_TH : BD_YEARLY_MONTHS_EN
 
@@ -1289,6 +1299,10 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
           </div>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>
+      )}
 
       {/* Heatmap + Bar chart — side by side */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
