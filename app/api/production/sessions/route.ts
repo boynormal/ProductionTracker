@@ -61,6 +61,26 @@ export async function GET(req: NextRequest) {
   const sessionDateStr = searchParams.get('sessionDate')
   const shiftTypeRaw   = searchParams.get('shiftType')
 
+  if (detailed) {
+    if (ctx.source !== 'nextauth') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const dbUser = await prisma.user.findUnique({
+      where: { id: ctx.operatorId },
+      select: { role: true, isActive: true },
+    })
+    if (!dbUser?.isActive) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const canViewHistory = await checkPermission({
+      userId: ctx.operatorId,
+      role: dbUser.role,
+      permissionKey: 'menu.production.history',
+      context: {
+        menuPath: '/production/history',
+        apiPath: req.nextUrl.pathname,
+        lineId,
+      },
+    })
+    if (!canViewHistory) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const where: any = {}
   if (machineId) where.machineId = machineId
   if (status) where.status = status
