@@ -54,12 +54,18 @@ interface MonthLineRow {
   totals: { plan: number; actual: number; diff: number | null }
 }
 
+interface HolidayInfo {
+  date: string
+  name: string
+}
+
 interface MonthResponse {
   data: MonthLineRow[]
   mode: 'month'
   days: string[]
   from: string
   to: string
+  holidays?: HolidayInfo[]
 }
 
 interface MonthData {
@@ -305,6 +311,13 @@ export function OtPlanClient({
   // ─── Derived data ─────────────────────────────────────────────────────────
   const monthData = mode === 'month' ? (rawData as MonthResponse | undefined) : undefined
   const yearData = mode === 'year' ? (rawData as YearResponse | undefined) : undefined
+
+  /** Map of YYYY-MM-DD → holiday name for quick lookup */
+  const holidayMap = useMemo<Map<string, string>>(() => {
+    const m = new Map<string, string>()
+    for (const h of monthData?.holidays ?? []) m.set(h.date, h.name)
+    return m
+  }, [monthData?.holidays])
 
   const [mY, mM] = selectedMonth.split('-').map(Number)
   const daysInMonth = getDaysInMonth(mY, mM)
@@ -824,16 +837,27 @@ export function OtPlanClient({
                         timeZone: 'UTC',
                       })
                       const dayNum = d.getUTCDate()
-                      const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6
+                      const isSunday = d.getUTCDay() === 0
+                      const holidayName = holidayMap.get(day)
+                      const isHoliday = !!holidayName
+                      const thClass = isHoliday
+                        ? 'bg-red-50 text-red-700'
+                        : isSunday
+                        ? 'bg-orange-50 text-orange-700'
+                        : 'bg-gray-50 text-gray-600'
                       return (
                         <th
                           key={day}
-                          className={`sticky top-0 z-30 px-0.5 py-1 text-center font-medium w-9 min-w-[36px] border-r border-b border-gray-200 ${
-                            isWeekend ? 'bg-orange-50 text-orange-700' : 'bg-gray-50 text-gray-600'
-                          }`}
+                          title={holidayName}
+                          className={`sticky top-0 z-30 px-0.5 py-1 text-center font-medium w-9 min-w-[36px] border-r border-b border-gray-200 ${thClass}`}
                         >
                           <div className="font-bold leading-tight">{dayNum}</div>
-                          <div className="text-gray-400 font-normal text-[9px] leading-tight">{dow}</div>
+                          <div className="font-normal text-[9px] leading-tight opacity-70">{dow}</div>
+                          {isHoliday && (
+                            <div className="text-[8px] leading-none text-red-400 truncate max-w-[34px] mx-auto">
+                              หยุด
+                            </div>
+                          )}
                         </th>
                       )
                     })}
@@ -881,9 +905,9 @@ export function OtPlanClient({
                             const actual = d?.actual ?? 0
                             rowPlan += plan
                             rowActual += actual
-                            const isWeekend =
-                              new Date(day + 'T00:00:00Z').getUTCDay() === 0 ||
-                              new Date(day + 'T00:00:00Z').getUTCDay() === 6
+                            const dow = new Date(day + 'T00:00:00Z').getUTCDay()
+                            const isSundayCell = dow === 0
+                            const isHolidayCell = holidayMap.has(day)
                             const isEdited = `${row.lineId}|${day}` in drafts
 
                             // Cell status → background
@@ -896,8 +920,10 @@ export function OtPlanClient({
                               ? 'bg-red-50'             // เกินแผน
                               : actual > 0 && actual <= plan
                               ? 'bg-emerald-50'         // อยู่ในแผน
-                              : isWeekend && !hasData
-                              ? 'bg-orange-50/40'       // เสาร์/อาทิตย์ ไม่มีข้อมูล
+                              : isHolidayCell && !hasData
+                              ? 'bg-red-50/40'          // วันหยุดนักขัตฤกษ์ ไม่มีข้อมูล
+                              : isSundayCell && !hasData
+                              ? 'bg-orange-50/40'       // อาทิตย์ ไม่มีข้อมูล
                               : ''
 
                             return (
@@ -984,16 +1010,18 @@ export function OtPlanClient({
                           (s, r) => s + (r.days[day]?.actual ?? 0),
                           0,
                         )
-                        const isWeekend =
-                          new Date(day + 'T00:00:00Z').getUTCDay() === 0 ||
-                          new Date(day + 'T00:00:00Z').getUTCDay() === 6
+                        const gtDow = new Date(day + 'T00:00:00Z').getUTCDay()
+                        const isSundayTotal = gtDow === 0
+                        const isHolidayTotal = holidayMap.has(day)
                         const totalBg = dayActual > dayPlan && dayPlan > 0
                           ? 'bg-red-100'
                           : dayActual > 0 && dayActual <= dayPlan
                           ? 'bg-emerald-100'
                           : dayActual > 0 && dayPlan === 0
                           ? 'bg-amber-100'
-                          : isWeekend
+                          : isHolidayTotal
+                          ? 'bg-red-50'
+                          : isSundayTotal
                           ? 'bg-orange-50'
                           : ''
                         return (
@@ -1056,6 +1084,14 @@ export function OtPlanClient({
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-3 h-3 rounded bg-amber-50 border border-amber-300" />
               OT จริง (ไม่มีแผน)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded bg-orange-50 border border-orange-300" />
+              อาทิตย์
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded bg-red-50 border border-red-400" />
+              วันหยุดนักขัตฤกษ์
             </span>
             <span className="text-gray-400 ml-2">แถวบน = แผน (เทา) · แถวล่าง = จริง (สี) · เลื่อนซ้าย-ขวาดูวันครบเดือน</span>
           </div>

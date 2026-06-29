@@ -141,11 +141,11 @@ export function NavRail({ userRole, allowedMenuKeys = [] }: Props) {
           <button
             type="button"
             aria-label="Close menu"
-            className="fixed inset-0 z-30 hidden bg-black/20 lg:block"
+            className="fixed inset-0 z-[45] hidden bg-black/20 lg:block"
             onClick={closeFlyout}
           />
           <div
-            className="fixed bottom-0 left-16 top-0 z-40 hidden w-56 flex-col border-r border-slate-200 bg-white shadow-xl lg:flex"
+            className="fixed bottom-0 left-16 top-0 z-50 hidden w-56 flex-col border-r border-slate-200 bg-white shadow-xl lg:flex"
             role="dialog"
             aria-label={openGroup.label}
           >

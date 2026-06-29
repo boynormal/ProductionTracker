@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
         date: { gte: from, lt: toExclusive },
         isActive: true,
       },
-      select: { date: true },
+      select: { date: true, name: true },
     }),
   ])
 
@@ -190,7 +190,14 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ data, mode, days, from: isoDate(from), to: isoDate(new Date(toExclusive.getTime() - 86400_000)) })
+    return NextResponse.json({
+      data,
+      mode,
+      days,
+      from: isoDate(from),
+      to: isoDate(new Date(toExclusive.getTime() - 86400_000)),
+      holidays: holidayRows.map((h) => ({ date: isoDate(h.date), name: h.name })),
+    })
   }
 
   // mode === 'year': aggregate by month
