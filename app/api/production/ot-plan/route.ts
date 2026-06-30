@@ -54,6 +54,11 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const canRead = await checkPermissionForSession(session, 'menu.production.otPlan', {
+    menuPath: '/production/ot-plan',
+  })
+  if (!canRead) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { searchParams } = new URL(req.url)
   const mode = searchParams.get('mode') === 'year' ? 'year' : 'month'
   const lineIdParam = searchParams.get('lineId')?.trim() || undefined
@@ -267,26 +272,30 @@ export async function POST(req: NextRequest) {
     }
 
     const results = await Promise.all(
-      parsed.data.items.map((item) =>
-        prisma.otPlan.upsert({
+      parsed.data.items.map((item) => {
+        const update: Prisma.OtPlanUpdateInput = {
+          plannedHours: item.plannedHours,
+        }
+        if (item.remark !== undefined) {
+          update.remark = item.remark ?? null
+        }
+
+        return prisma.otPlan.upsert({
           where: {
             lineId_planDate: {
               lineId: item.lineId,
               planDate: new Date(item.planDate),
             },
           },
-          update: {
-            plannedHours: item.plannedHours,
-            remark: item.remark ?? null,
-          },
+          update,
           create: {
             lineId: item.lineId,
             planDate: new Date(item.planDate),
             plannedHours: item.plannedHours,
             remark: item.remark ?? null,
           },
-        }),
-      ),
+        })
+      }),
     )
 
     return NextResponse.json({ data: results, count: results.length }, { status: 200 })
