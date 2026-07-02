@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { auditUserIdFromSession } from '@/lib/audit-user'
 import { parseThaiLocalToUtc } from '@/lib/time-utils'
 import { z } from 'zod'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+import type { PermissionCheckContext } from '@/lib/permissions/scope-match'
+
+const RECORD_EDIT_PERMISSION_KEY = 'api.production.record.edit'
+
 const updateSchema = z.object({
   okQty: z.number().int().min(0).optional(),
   remark: z.string().optional(),
@@ -29,6 +34,43 @@ const updateSchema = z.object({
 })
 
 type Params = { params: Promise<{ id: string }> }
+
+const recordMutationInclude = {
+  session: {
+    select: {
+      lineId: true,
+      shiftType: true,
+      line: {
+        select: {
+          sectionId: true,
+          section: {
+            select: {
+              divisionId: true,
+              division: { select: { departmentId: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+  breakdownLogs: true,
+  ngLogs: true,
+} satisfies Prisma.HourlyRecordInclude
+
+type RecordMutationTarget = Prisma.HourlyRecordGetPayload<{ include: typeof recordMutationInclude }>
+
+function permissionContextForRecord(req: NextRequest, record: RecordMutationTarget): PermissionCheckContext {
+  const line = record.session.line
+  const section = line.section
+  return {
+    apiPath: req.nextUrl.pathname,
+    departmentId: section?.division?.departmentId ?? null,
+    divisionId: section?.divisionId ?? null,
+    sectionId: line.sectionId ?? null,
+    lineId: record.session.lineId,
+    shiftType: record.session.shiftType,
+  }
+}
 
 function normalizeBreakdownEntries(entries: NonNullable<z.infer<typeof updateSchema>['breakdown']>) {
   return entries.map((bd, index) => {
@@ -84,7 +126,20 @@ export async function GET(req: NextRequest, { params }: Params) {
           reportingDate: true,
           sessionDate: true,
           shiftType:   true,
-          line:        { select: { id: true, lineCode: true, lineName: true } },
+          line:        {
+            select: {
+              id: true,
+              lineCode: true,
+              lineName: true,
+              sectionId: true,
+              section: {
+                select: {
+                  divisionId: true,
+                  division: { select: { departmentId: true } },
+                },
+              },
+            },
+          },
         },
       },
       breakdownLogs: { include: { problemCategory: true } },
@@ -94,6 +149,19 @@ export async function GET(req: NextRequest, { params }: Params) {
   })
 
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canEdit = await checkPermissionForSession(session, RECORD_EDIT_PERMISSION_KEY, {
+    apiPath: req.nextUrl.pathname,
+    departmentId: data.session.line.section?.division?.departmentId ?? null,
+    divisionId: data.session.line.section?.divisionId ?? null,
+    sectionId: data.session.line.sectionId ?? null,
+    lineId: data.session.lineId,
+    shiftType: data.session.shiftType,
+  })
+  if (!canEdit) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   return NextResponse.json({ data })
 }
 
@@ -102,15 +170,25 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
-    if (!canWrite) {
+    const { id } = await params
+    const existing = await prisma.hourlyRecord.findUnique({
+      where: { id },
+      include: recordMutationInclude,
+    })
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    const canEdit = await checkPermissionForSession(
+      session,
+      RECORD_EDIT_PERMISSION_KEY,
+      permissionContextForRecord(req, existing),
+    )
+    if (!canEdit) {
       return NextResponse.json(
         { error: 'แก้ไขได้เฉพาะหัวหน้างาน / วิศวกร / ผู้จัดการ / Admin' },
         { status: 403 },
       )
     }
 
-    const { id } = await params
     const body = await req.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
@@ -120,24 +198,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const shouldReplaceBreakdown = Object.prototype.hasOwnProperty.call(body, 'breakdown')
     const shouldReplaceNg = Object.prototype.hasOwnProperty.call(body, 'ng')
 
-    const existing = await prisma.hourlyRecord.findUnique({
-      where: { id },
-      include: {
-        session: { select: { lineId: true } },
-        breakdownLogs: true,
-        ngLogs: true,
-      },
-    })
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
     const auditUserId = await auditUserIdFromSession(session)
-
-    if (shouldReplaceBreakdown) {
-      await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-    if (shouldReplaceNg) {
-      await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
 
     let breakdownData: ReturnType<typeof normalizeBreakdownEntries> = []
     if (shouldReplaceBreakdown) {
@@ -228,6 +289,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (shouldReplaceBreakdown) {
       updatePayload.hasBreakdown = hasBreakdown
       updatePayload.breakdownLogs = {
+        deleteMany: {},
         create: breakdownData.map(bd => ({
           breakdownStart:    bd.breakdownStart,
           breakdownEnd:      bd.breakdownEnd,
@@ -242,6 +304,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (shouldReplaceNg) {
       updatePayload.hasNg = hasNg
       updatePayload.ngLogs = {
+        deleteMany: {},
         create: ngData.map(ng => ({
           machineId:         ng.machineId?.trim() ?? null,
           ngQty:             ng.ngQty,
@@ -252,20 +315,24 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const updated = await prisma.hourlyRecord.update({
-      where: { id },
-      data: updatePayload,
-      include: { breakdownLogs: true, ngLogs: true },
-    })
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await tx.hourlyRecord.update({
+        where: { id },
+        data: updatePayload,
+        include: { breakdownLogs: true, ngLogs: true },
+      })
 
-    await prisma.auditLog.create({
-      data: {
-        userId:   auditUserId,
-        action:   'UPDATE_RECORD',
-        entity:   'hourly_records',
-        entityId: id,
-        details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
-      },
+      await tx.auditLog.create({
+        data: {
+          userId:   auditUserId,
+          action:   'UPDATE_RECORD',
+          entity:   'hourly_records',
+          entityId: id,
+          details:  { okQty: data.okQty, hourSlot: existing.hourSlot },
+        },
+      })
+
+      return saved
     })
 
     return NextResponse.json({ data: updated })
@@ -279,16 +346,28 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
-  if (!canWrite) {
+  const { id } = await params
+  const existing = await prisma.hourlyRecord.findUnique({
+    where: { id },
+    include: recordMutationInclude,
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canEdit = await checkPermissionForSession(
+    session,
+    RECORD_EDIT_PERMISSION_KEY,
+    permissionContextForRecord(req, existing),
+  )
+  if (!canEdit) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { id } = await params
-  await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.modelChange.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.hourlyRecord.delete({ where: { id } })
+  await prisma.$transaction([
+    prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } }),
+    prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } }),
+    prisma.modelChange.deleteMany({ where: { hourlyRecordId: id } }),
+    prisma.hourlyRecord.delete({ where: { id } }),
+  ])
 
   return NextResponse.json({ success: true })
 }
