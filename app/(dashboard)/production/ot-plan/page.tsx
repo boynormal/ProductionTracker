@@ -9,6 +9,11 @@ export default async function OtPlanPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
+  const canViewPlan = await checkPermissionForSession(session, 'menu.production.otPlan', {
+    menuPath: '/production/ot-plan',
+  })
+  if (!canViewPlan) redirect('/')
+
   const canEditPlan = session.user?.id
     ? await checkPermissionForSession(session, 'api.production.otplan.write', {
         apiPath: '/api/production/ot-plan',
