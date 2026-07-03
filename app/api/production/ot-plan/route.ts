@@ -55,6 +55,12 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
+  const canView = await checkPermissionForSession(session, 'menu.production.otPlan', {
+    menuPath: '/production/ot-plan',
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canView) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const mode = searchParams.get('mode') === 'year' ? 'year' : 'month'
   const lineIdParam = searchParams.get('lineId')?.trim() || undefined
   const divisionIdParam = searchParams.get('divisionId')?.trim() || undefined
@@ -266,27 +272,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
-    const results = await Promise.all(
-      parsed.data.items.map((item) =>
-        prisma.otPlan.upsert({
+    const results = await prisma.$transaction(
+      parsed.data.items.map((item) => {
+        const hasRemark = Object.prototype.hasOwnProperty.call(item, 'remark')
+        const update: Prisma.OtPlanUpdateInput = { plannedHours: item.plannedHours }
+        if (hasRemark) update.remark = item.remark ?? null
+
+        return prisma.otPlan.upsert({
           where: {
             lineId_planDate: {
               lineId: item.lineId,
               planDate: new Date(item.planDate),
             },
           },
-          update: {
-            plannedHours: item.plannedHours,
-            remark: item.remark ?? null,
-          },
+          update,
           create: {
             lineId: item.lineId,
             planDate: new Date(item.planDate),
             plannedHours: item.plannedHours,
             remark: item.remark ?? null,
           },
-        }),
-      ),
+        })
+      }),
     )
 
     return NextResponse.json({ data: results, count: results.length }, { status: 200 })

@@ -5,6 +5,7 @@ import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
 import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/utils/oee'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 /** รวม Session ที่ยังเปิดกะ — ไม่เช่นนั้นรายงานจะว่างจนกว่าจะปิดกะ */
 const REPORT_SESSION_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const
@@ -31,6 +32,12 @@ function utcMonthRangeFromDate(fromDate: Date): { start: Date; endExclusive: Dat
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const canView = await checkPermissionForSession(session, 'menu.production.report', {
+    menuPath: '/production/report',
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canView) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const from = searchParams.get('from')
@@ -531,13 +538,15 @@ export async function GET(req: NextRequest) {
   const byLineNg = Array.from(ngLineMap.values())
     .map((e) => {
       const cats = Array.from(e.categories.values()).sort((a, b) => b.ngQty - a.ngQty)
-      const total = e.okQty + e.ngQty
+      const lineTotals = lineMap.get(`${e.lineId}|${e.period}`)
+      const okQty = lineTotals?.okQty ?? e.okQty
+      const total = okQty + e.ngQty
       return {
         lineId: e.lineId,
         lineCode: e.lineCode,
         period: e.period,
         ngQty: e.ngQty,
-        okQty: e.okQty,
+        okQty,
         ngRate: total > 0 ? e.ngQty / total : 0,
         topCategory: cats[0] ?? null,
         categories: cats,
