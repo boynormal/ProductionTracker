@@ -86,49 +86,71 @@ export async function GET(req: NextRequest) {
     lineWhere = { line: { sectionId: { in: deptSections.map((s) => s.id) } } }
   }
 
-  const records = await prisma.hourlyRecord.findMany({
-    where: {
-      session: {
-        status: { in: [...REPORT_SESSION_STATUSES] },
-        ...reportingDateRangeWhere(fromDate, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
-        ...lineWhere,
-      },
-    },
-    select: {
-      okQty: true,
-      targetQty: true,
-      operatorId: true,
-      partId: true,
-      machineId: true,
-      session: {
-        select: {
-          reportingDate: true,
-          sessionDate: true,
-          lineId: true,
-          line: { select: { lineCode: true } },
+  const [records, holidayRows] = await Promise.all([
+    prisma.hourlyRecord.findMany({
+      where: {
+        session: {
+          status: { in: [...REPORT_SESSION_STATUSES] },
+          ...reportingDateRangeWhere(fromDate, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
+          ...lineWhere,
         },
       },
-      operator: {
-        select: { employeeCode: true, firstName: true, lastName: true },
-      },
-      part: { select: { partSamco: true, partName: true } },
-      machine: { select: { mcNo: true, line: { select: { lineCode: true } } } },
-      breakdownLogs: {
-        select: {
-          breakTimeMin: true,
-          problemCategoryId: true,
-          problemCategory: { select: { code: true, name: true } },
+      select: {
+        okQty: true,
+        targetQty: true,
+        operatorId: true,
+        partId: true,
+        machineId: true,
+        isOvertimeHour: true,
+        session: {
+          select: {
+            id: true,
+            normalHours: true,
+            reportingDate: true,
+            sessionDate: true,
+            lineId: true,
+            line: { select: { lineCode: true } },
+          },
+        },
+        operator: {
+          select: { employeeCode: true, firstName: true, lastName: true },
+        },
+        part: { select: { partSamco: true, partName: true } },
+        machine: { select: { mcNo: true, line: { select: { lineCode: true } } } },
+        breakdownLogs: {
+          select: {
+            breakTimeMin: true,
+            problemCategoryId: true,
+            problemCategory: { select: { code: true, name: true } },
+          },
+        },
+        ngLogs: {
+          select: {
+            ngQty: true,
+            problemCategoryId: true,
+            problemCategory: { select: { code: true, name: true } },
+          },
         },
       },
-      ngLogs: {
-        select: {
-          ngQty: true,
-          problemCategoryId: true,
-          problemCategory: { select: { code: true, name: true } },
-        },
-      },
-    },
-  })
+    }),
+    prisma.holiday.findMany({
+      where: { date: { gte: fromDate, lt: toExclusive }, isActive: true },
+      select: { date: true },
+    }),
+  ])
+
+  const holidaySet = new Set(holidayRows.map((h) => h.date.toISOString().slice(0, 10)))
+
+  // Count working days in the selected range (exclude Sundays + public holidays)
+  let totalWorkingDays = 0
+  {
+    const cur = new Date(fromDate)
+    while (cur < toExclusive) {
+      const ds = cur.toISOString().slice(0, 10)
+      if (cur.getUTCDay() !== 0 && !holidaySet.has(ds)) totalWorkingDays++
+      cur.setUTCDate(cur.getUTCDate() + 1)
+    }
+  }
 
   type OpRow = {
     operatorId: string
@@ -173,6 +195,7 @@ export async function GET(req: NextRequest) {
 
   type CatBdAgg = { categoryId: string; code: string; name: string; count: number; bdMin: number }
   type CatNgAgg = { categoryId: string; code: string; name: string; ngQty: number }
+  type PartNgAgg = { partId: string; partSamco: number; partName: string; ngQty: number; okQty: number }
 
   type BdLineAgg = {
     lineId: string
@@ -189,6 +212,15 @@ export async function GET(req: NextRequest) {
     ngQty: number
     okQty: number
     categories: Map<string, CatNgAgg>
+    parts: Map<string, PartNgAgg>
+  }
+
+  type LineIdleAgg = {
+    lineId: string
+    lineCode: string
+    normalCapacity: number
+    normalHoursUsed: number
+    sessionDates: Set<string>  // distinct working-day reportingDates that had sessions
   }
 
   const opMap = new Map<string, OpRow>()
@@ -197,6 +229,8 @@ export async function GET(req: NextRequest) {
   const lineMap = new Map<string, LineAgg>()
   const bdLineMap = new Map<string, BdLineAgg>()
   const ngLineMap = new Map<string, NgLineAgg>()
+  const lineIdleMap = new Map<string, LineIdleAgg>()
+  const countedIdleSessions = new Set<string>()
 
   for (const r of records) {
     if (!r.session.reportingDate) continue
@@ -298,12 +332,15 @@ export async function GET(req: NextRequest) {
           ngQty: 0,
           okQty: 0,
           categories: new Map(),
+          parts: new Map(),
         })
       }
       const ngEntry = ngLineMap.get(lk)!
       ngEntry.okQty += r.okQty
+      let recordNg = 0
       for (const n of r.ngLogs) {
         ngEntry.ngQty += n.ngQty
+        recordNg += n.ngQty
         const catId = n.problemCategoryId
         if (!ngEntry.categories.has(catId)) {
           ngEntry.categories.set(catId, {
@@ -315,6 +352,45 @@ export async function GET(req: NextRequest) {
         }
         ngEntry.categories.get(catId)!.ngQty += n.ngQty
       }
+      if (recordNg > 0) {
+        const pid = r.partId
+        if (!ngEntry.parts.has(pid)) {
+          ngEntry.parts.set(pid, {
+            partId: pid,
+            partSamco: r.part.partSamco,
+            partName: r.part.partName,
+            ngQty: 0,
+            okQty: 0,
+          })
+        }
+        const partEntry = ngEntry.parts.get(pid)!
+        partEntry.ngQty += recordNg
+        partEntry.okQty += r.okQty
+      }
+    }
+
+    // Idle hours aggregation — working days only (exclude Sundays and public holidays)
+    const rdStr = r.session.reportingDate.toISOString().slice(0, 10)
+    const isWorkingDay = r.session.reportingDate.getUTCDay() !== 0 && !holidaySet.has(rdStr)
+    if (isWorkingDay) {
+      const idleKey = r.session.lineId
+      if (!lineIdleMap.has(idleKey)) {
+        lineIdleMap.set(idleKey, {
+          lineId: r.session.lineId,
+          lineCode: r.session.line.lineCode,
+          normalCapacity: 0,
+          normalHoursUsed: 0,
+          sessionDates: new Set<string>(),
+        })
+      }
+      const idle = lineIdleMap.get(idleKey)!
+      idle.sessionDates.add(rdStr)
+      const sk = `${r.session.lineId}|${r.session.id}`
+      if (!countedIdleSessions.has(sk)) {
+        countedIdleSessions.add(sk)
+        idle.normalCapacity += r.session.normalHours
+      }
+      if (!r.isOvertimeHour) idle.normalHoursUsed += 1
     }
 
     if (!(r.machineId && r.machine)) {
@@ -531,6 +607,10 @@ export async function GET(req: NextRequest) {
   const byLineNg = Array.from(ngLineMap.values())
     .map((e) => {
       const cats = Array.from(e.categories.values()).sort((a, b) => b.ngQty - a.ngQty)
+      const parts = Array.from(e.parts.values()).sort((a, b) => {
+        if (b.ngQty !== a.ngQty) return b.ngQty - a.ngQty
+        return a.partSamco - b.partSamco
+      })
       const total = e.okQty + e.ngQty
       return {
         lineId: e.lineId,
@@ -541,6 +621,9 @@ export async function GET(req: NextRequest) {
         ngRate: total > 0 ? e.ngQty / total : 0,
         topCategory: cats[0] ?? null,
         categories: cats,
+        defectivePartCount: parts.length,
+        topPart: parts[0] ?? null,
+        parts,
       }
     })
     .sort((a, b) => {
@@ -548,6 +631,32 @@ export async function GET(req: NextRequest) {
       if (c !== 0) return c
       return a.period.localeCompare(b.period)
     })
+
+  const byLineIdle = Array.from(lineIdleMap.values())
+    .map((e) => {
+      const sessionDays = e.sessionDates.size
+      const noSessionDays = Math.max(0, totalWorkingDays - sessionDays)
+      const inShiftIdleHours = Math.max(0, e.normalCapacity - e.normalHoursUsed)
+      return {
+        lineId: e.lineId,
+        lineCode: e.lineCode,
+        totalWorkingDays,
+        sessionDays,
+        noSessionDays,
+        sessionDayPct:
+          totalWorkingDays > 0
+            ? Math.round((sessionDays / totalWorkingDays) * 1000) / 10
+            : 0,
+        normalCapacity: e.normalCapacity,
+        normalHoursUsed: e.normalHoursUsed,
+        inShiftIdleHours,
+        utilizationPct:
+          e.normalCapacity > 0
+            ? Math.round((e.normalHoursUsed / e.normalCapacity) * 1000) / 10
+            : 0,
+      }
+    })
+    .sort((a, b) => a.utilizationPct - b.utilizationPct)
 
   return NextResponse.json({
     granularity,
@@ -557,6 +666,7 @@ export async function GET(req: NextRequest) {
     byLine,
     byLineBreakdown,
     byLineNg,
+    byLineIdle,
     operatorMonthMatrix,
   })
 }

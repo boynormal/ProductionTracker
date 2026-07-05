@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, Fragment, type ReactNode } from 'react'
 import useSWR from 'swr'
 import {
   BarChart,
@@ -13,9 +13,8 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { format, subDays } from 'date-fns'
-import { BarChart3, Loader2, Users, Package, Cog, Search, Download, Wrench, XCircle } from 'lucide-react'
+import { BarChart3, Loader2, Users, Package, Cog, Search, Download, Wrench, XCircle, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown, ChevronRight } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
-import { getOeeBg } from '@/lib/utils/oee'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils/cn'
 import {
@@ -146,9 +145,30 @@ export function ReportClient({ departments, divisions, sections }: Props) {
   const payload = rangeOk ? data : undefined
   const byOperator = payload?.byOperator ?? []
   const byPart = payload?.byPart ?? []
-  const byLine = payload?.byLine ?? []
   const byLineBreakdown: ByLineBreakdownRow[] = payload?.byLineBreakdown ?? []
   const byLineNg: ByLineNgRow[] = payload?.byLineNg ?? []
+  const byLineIdleRaw: ByLineIdleRow[] = payload?.byLineIdle ?? []
+  type LineIdleSortKey = keyof ByLineIdleRow
+  const [lineIdleSortKey, setLineIdleSortKey] = useState<LineIdleSortKey>('utilizationPct')
+  const [lineIdleSortDir, setLineIdleSortDir] = useState<'asc' | 'desc'>('asc')
+  const byLineIdle = useMemo(() => {
+    const key = lineIdleSortKey
+    const dir = lineIdleSortDir === 'asc' ? 1 : -1
+    return [...byLineIdleRaw].sort((a, b) => {
+      const av = a[key], bv = b[key]
+      if (typeof av === 'string' && typeof bv === 'string')
+        return dir * av.localeCompare(bv, 'th', { numeric: true })
+      return dir * ((av as number) - (bv as number))
+    })
+  }, [byLineIdleRaw, lineIdleSortKey, lineIdleSortDir])
+  const toggleLineIdleSort = (key: LineIdleSortKey) => {
+    if (lineIdleSortKey === key) {
+      setLineIdleSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setLineIdleSortKey(key)
+      setLineIdleSortDir('asc')
+    }
+  }
   const operatorMonthMatrix = payload?.operatorMonthMatrix ?? null
   const rangeError =
     !rangeOk && granularity === 'day'
@@ -202,7 +222,7 @@ export function ReportClient({ departments, divisions, sections }: Props) {
     hasPayload &&
     operatorsReportEmpty &&
     byPart.length === 0 &&
-    byLine.length === 0 &&
+    byLineIdle.length === 0 &&
     byLineBreakdown.length === 0 &&
     byLineNg.length === 0
   const showLoadingBlock = isLoading && !payload && !fetchFailed
@@ -243,20 +263,30 @@ export function ReportClient({ departments, divisions, sections }: Props) {
       XLSX.utils.book_append_sheet(wb, ws, 'Parts')
     }
 
-    // Sheet 3: Lines
+    // Sheet 3: Lines — Idle Hours
     {
-      const header = [th ? 'ไลน์' : 'Line', periodLabel, 'OEE%', 'Avail%', 'Perf%', 'Qual%', th ? 'OK' : 'OK Qty']
-      const rows = byLine.map((r: any) => [
+      const header = [
+        th ? 'ไลน์' : 'Line',
+        th ? 'วันที่ขึ้นงาน' : 'Session days',
+        th ? 'วันไม่ขึ้นงาน' : 'No-session days',
+        th ? '% วันที่ขึ้นงาน' : 'Session days %',
+        th ? 'กำลังผลิตปกติ (ชม.)' : 'Normal cap. (hr)',
+        th ? 'ชม.ใช้งาน' : 'Used (hr)',
+        th ? 'ชม.ว่างในกะ' : 'In-shift idle (hr)',
+        th ? '% การใช้งาน' : 'Utilization %',
+      ]
+      const rows = byLineIdle.map((r) => [
         r.lineCode,
-        r.period,
-        Number(r.oee),
-        Number(r.availability),
-        Number(r.performance),
-        Number(r.quality),
-        Number(r.okQty),
+        r.sessionDays,
+        r.noSessionDays,
+        r.sessionDayPct,
+        r.normalCapacity,
+        r.normalHoursUsed,
+        r.inShiftIdleHours,
+        r.utilizationPct,
       ])
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
-      XLSX.utils.book_append_sheet(wb, ws, 'Lines')
+      XLSX.utils.book_append_sheet(wb, ws, th ? 'ชม.ว่างไลน์' : 'Line Idle')
     }
 
     // Sheet 4: Breakdown
@@ -289,7 +319,8 @@ export function ReportClient({ departments, divisions, sections }: Props) {
         th ? 'Defect (ชิ้น)' : 'Defect qty',
         th ? 'OK (ชิ้น)' : 'OK qty',
         'Defect Rate%',
-        th ? 'หมวดหมู่หลัก' : 'Top Category',
+        th ? 'จำนวน Part' : '# Parts',
+        th ? 'Part หลัก' : 'Top Part',
       ]
       const rows = byLineNg.map((r) => [
         r.lineCode,
@@ -297,10 +328,31 @@ export function ReportClient({ departments, divisions, sections }: Props) {
         r.ngQty,
         r.okQty,
         Number((r.ngRate * 100).toFixed(2)),
-        r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '',
+        r.defectivePartCount ?? r.parts?.length ?? 0,
+        formatTopPartPlain(r.topPart),
       ])
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
       XLSX.utils.book_append_sheet(wb, ws, 'Defect')
+    }
+
+    // Sheet 6: Defect by Part
+    {
+      const header = [
+        th ? 'ไลน์' : 'Line',
+        periodLabel,
+        th ? 'Part Samco' : 'Part Samco',
+        th ? 'ชื่อ Part' : 'Part Name',
+        th ? 'Defect (ชิ้น)' : 'Defect qty',
+        th ? 'OK (ชิ้น)' : 'OK qty',
+      ]
+      const rows: (string | number)[][] = []
+      for (const r of byLineNg) {
+        for (const p of r.parts ?? []) {
+          rows.push([r.lineCode, r.period, p.partSamco, p.partName, p.ngQty, p.okQty ?? 0])
+        }
+      }
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, th ? 'Defect ตาม Part' : 'Defect by Part')
     }
 
     XLSX.writeFile(wb, `production_report_${nowStamp}.xlsx`)
@@ -604,51 +656,106 @@ export function ReportClient({ departments, divisions, sections }: Props) {
           </TabsContent>
 
           <TabsContent value="lines" className="mt-4">
+            {/* Idle hours summary */}
             <ReportSection
-              icon={<Cog className="text-amber-600" size={20} />}
-              title={th ? 'ไลน์การผลิต — ประสิทธิภาพรวม (OEE%) ต่อช่วง' : 'Lines — OEE % by period'}
+              icon={<Cog className="text-slate-500" size={20} />}
+              title={th ? 'ชม. ที่ไม่ได้ใช้งาน — สรุปต่อไลน์' : 'Idle Hours — summary by line'}
               subtitle={
                 th
-                  ? 'คิดจากชั่วโมงที่มีบันทึกของแต่ละไลน์ (1 แถว = 1 ชม.) และ Breakdown/Defect ของแถวนั้น — รวม Session ที่ยังเปิดกะ (ค่า OEE เป็นภาพระหว่างกะ)'
-                  : 'Per line-hour row; includes open sessions (OEE is in-shift / preliminary until close).'
+                  ? 'นับเฉพาะวันทำงาน (ไม่รวมอาทิตย์ / วันหยุดนักขัตฤกษ์) และชม.ปกติเท่านั้น (ไม่รวม OT)'
+                  : 'Working days only (excl. Sundays & public holidays); normal hours only (excl. OT).'
               }
             >
-              <SimpleTable
-                empty={
-                  th
-                    ? 'ไม่มีข้อมูลไลน์ในช่วงที่เลือก'
-                    : 'No line rows in selected period'
-                }
-                cols={[
-                  th ? 'ไลน์' : 'Line',
-                  periodLabel,
-                  'OEE%',
-                  th ? 'Avail' : 'Avail%',
-                  th ? 'Perf' : 'Perf%',
-                  th ? 'Qual' : 'Qual%',
-                  th ? 'OK' : 'OK',
-                ]}
-                rows={byLine.map(
-                  (r: {
-                    lineCode: string
-                    period: string
-                    oee: number
-                    availability: number
-                    performance: number
-                    quality: number
-                    okQty: number
-                  }) => [
-                    r.lineCode,
-                    r.period,
-                    <span className={`font-bold ${getOeeBg(r.oee)} rounded px-2 py-0.5`}>{r.oee}%</span>,
-                    `${r.availability}%`,
-                    `${r.performance}%`,
-                    `${r.quality}%`,
-                    r.okQty.toLocaleString(),
-                  ],
-                )}
-              />
+              <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+                <table className={DASHBOARD_TABLE_REPORT}>
+                  <thead className={DASHBOARD_THEAD_STICKY}>
+                    <tr>
+                      {(
+                        [
+                          ['lineCode', th ? 'ไลน์' : 'Line'],
+                          ['sessionDays', th ? 'วันที่ขึ้นงาน' : 'Session days'],
+                          ['noSessionDays', th ? 'วันไม่ขึ้นงาน' : 'No-session days'],
+                          ['sessionDayPct', th ? '% วันที่ขึ้นงาน' : 'Session days %'],
+                          ['normalCapacity', th ? 'กำลังผลิตปกติ (ชม.)' : 'Normal cap. (hr)'],
+                          ['normalHoursUsed', th ? 'ชม.ใช้งาน' : 'Used (hr)'],
+                          ['inShiftIdleHours', th ? 'ชม.ว่างในกะ' : 'In-shift idle (hr)'],
+                          ['utilizationPct', th ? '% การใช้งาน' : 'Utilization %'],
+                        ] as [keyof ByLineIdleRow, string][]
+                      ).map(([key, label]) => (
+                        <th key={key} className={DASHBOARD_TH_STICKY_SOFT}>
+                          <button
+                            type="button"
+                            onClick={() => toggleLineIdleSort(key)}
+                            className="inline-flex items-center gap-1 rounded hover:bg-slate-200/70 px-1 py-0.5 transition-colors"
+                          >
+                            <span>{label}</span>
+                            {lineIdleSortKey === key ? (
+                              lineIdleSortDir === 'asc'
+                                ? <ArrowUp size={13} className="text-blue-600 shrink-0" />
+                                : <ArrowDown size={13} className="text-blue-600 shrink-0" />
+                            ) : (
+                              <ArrowUpDown size={13} className="text-slate-400 shrink-0" />
+                            )}
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byLineIdle.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="border border-slate-100 px-3 py-12 text-center text-sm font-medium text-slate-600">
+                          {th ? 'ไม่มีข้อมูลไลน์ในช่วงที่เลือก' : 'No line data in selected period'}
+                        </td>
+                      </tr>
+                    ) : (
+                      byLineIdle.map((r) => {
+                        const pct = r.utilizationPct
+                        const sessionPct = r.sessionDayPct
+                        const sessionPctColor =
+                          sessionPct >= 80 ? 'text-emerald-700 bg-emerald-50' :
+                          sessionPct >= 50 ? 'text-amber-700 bg-amber-50' :
+                          'text-red-700 bg-red-50'
+                        const pctColor =
+                          pct >= 80 ? 'text-emerald-700 bg-emerald-50' :
+                          pct >= 50 ? 'text-amber-700 bg-amber-50' :
+                          'text-red-700 bg-red-50'
+                        const td = 'border border-slate-100 px-3 py-2 text-slate-700'
+                        return (
+                          <tr key={r.lineCode} className="hover:bg-slate-50/80">
+                            <td className={td}>{r.lineCode}</td>
+                            <td className={td}>{r.sessionDays}</td>
+                            <td className={td}>
+                              <span className={r.noSessionDays > 0 ? 'font-semibold text-orange-600' : 'text-gray-500'}>
+                                {r.noSessionDays}
+                              </span>
+                            </td>
+                            <td className={td}>
+                              <span className={`font-bold rounded px-2 py-0.5 ${sessionPctColor}`}>
+                                {sessionPct.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td className={td}>{r.normalCapacity.toLocaleString()}</td>
+                            <td className={td}>{r.normalHoursUsed.toLocaleString()}</td>
+                            <td className={td}>
+                              <span className={r.inShiftIdleHours > 0 ? 'font-semibold text-red-600' : 'text-gray-500'}>
+                                {r.inShiftIdleHours.toLocaleString()}
+                              </span>
+                            </td>
+                            <td className={td}>
+                              <span className={`font-bold rounded px-2 py-0.5 ${pctColor}`}>
+                                {pct.toFixed(1)}%
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </ReportSection>
+
           </TabsContent>
 
           <TabsContent value="breakdown" className="mt-4">
@@ -718,29 +825,7 @@ export function ReportClient({ departments, divisions, sections }: Props) {
               }
             >
               <NgSummaryCards rows={byLineNg} th={th} />
-              <SimpleTable
-                empty={th ? 'ไม่มีข้อมูล Defect ในช่วงนี้' : 'No Defect data in selected period'}
-                cols={[
-                  th ? 'ไลน์' : 'Line',
-                  periodLabel,
-                  th ? 'Defect (ชิ้น)' : 'Defect qty',
-                  th ? 'OK (ชิ้น)' : 'OK qty',
-                  'Defect Rate%',
-                  th ? 'หมวดหมู่หลัก' : 'Top Category',
-                ]}
-                rows={byLineNg.map((r) => [
-                  r.lineCode,
-                  r.period,
-                  r.ngQty.toLocaleString(),
-                  r.okQty.toLocaleString(),
-                  <span
-                    className={`rounded px-2 py-0.5 font-bold ${r.ngRate >= 0.05 ? 'bg-red-100 text-red-700' : r.ngRate >= 0.02 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}
-                  >
-                    {(r.ngRate * 100).toFixed(2)}%
-                  </span>,
-                  r.topCategory ? `${r.topCategory.code} — ${r.topCategory.name}` : '—',
-                ])}
-              />
+              <NgDefectLineTable rows={byLineNg} periodLabel={periodLabel} th={th} />
             </ReportSection>
           </TabsContent>
         </Tabs>
@@ -751,6 +836,7 @@ export function ReportClient({ departments, divisions, sections }: Props) {
 
 type BdCategoryRow = { categoryId: string; code: string; name: string; count: number; bdMin: number }
 type NgCategoryRow = { categoryId: string; code: string; name: string; ngQty: number }
+type NgPartRow = { partId: string; partSamco: number; partName: string; ngQty: number; okQty: number }
 
 type ByLineBreakdownRow = {
   lineId: string
@@ -771,6 +857,32 @@ type ByLineNgRow = {
   ngRate: number
   topCategory: NgCategoryRow | null
   categories: NgCategoryRow[]
+  defectivePartCount: number
+  topPart: NgPartRow | null
+  parts: NgPartRow[]
+}
+
+function formatTopPartPlain(p: NgPartRow | null | undefined): string {
+  if (!p) return ''
+  return `${p.partSamco} — ${p.partName} (${p.ngQty})`
+}
+
+function formatTopPartDisplay(p: NgPartRow | null | undefined): string {
+  if (!p) return '—'
+  return `${p.partSamco} — ${p.partName} (${p.ngQty.toLocaleString()})`
+}
+
+type ByLineIdleRow = {
+  lineId: string
+  lineCode: string
+  totalWorkingDays: number
+  sessionDays: number
+  noSessionDays: number
+  sessionDayPct: number
+  normalCapacity: number
+  normalHoursUsed: number
+  inShiftIdleHours: number
+  utilizationPct: number
 }
 
 function BreakdownSummaryCards({ rows, th }: { rows: ByLineBreakdownRow[]; th: boolean }) {
@@ -938,6 +1050,161 @@ function NgSummaryCards({ rows, th }: { rows: ByLineNgRow[]; th: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function NgPartDetailMiniTable({ parts, th }: { parts: NgPartRow[]; th: boolean }) {
+  if (parts.length === 0) return null
+  return (
+    <div className="overflow-x-auto rounded-lg border border-red-100 bg-red-50/30">
+      <table className="min-w-full text-sm">
+        <thead className="bg-red-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-red-700">#</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-red-700">Samco</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-red-700">Part</th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-red-700">
+              {th ? 'Defect (ชิ้น)' : 'Defect qty'}
+            </th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-red-700">
+              {th ? 'OK (ชิ้น)' : 'OK qty'}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {parts.map((p, i) => (
+            <tr key={p.partId} className={i % 2 === 0 ? 'bg-white' : 'bg-red-50/40'}>
+              <td className="px-3 py-2 text-xs font-medium text-slate-400">{i + 1}</td>
+              <td className="px-3 py-2 font-mono text-xs text-red-600">{p.partSamco}</td>
+              <td className="px-3 py-2 text-slate-800">{p.partName}</td>
+              <td className="px-3 py-2 text-right font-semibold text-slate-700">{p.ngQty.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right font-semibold text-slate-700">{(p.okQty ?? 0).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function NgDefectLineTable({
+  rows,
+  periodLabel,
+  th,
+}: {
+  rows: ByLineNgRow[]
+  periodLabel: string
+  th: boolean
+}) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [ngRateSortDir, setNgRateSortDir] = useState<'asc' | 'desc'>('desc')
+  const colCount = 8
+
+  const sortedRows = useMemo(() => {
+    const dir = ngRateSortDir === 'asc' ? 1 : -1
+    return [...rows].sort((a, b) => dir * (a.ngRate - b.ngRate))
+  }, [rows, ngRateSortDir])
+
+  const toggleNgRateSort = () => {
+    setNgRateSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+  }
+
+  return (
+    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+      <table className={DASHBOARD_TABLE_REPORT}>
+        <thead className={DASHBOARD_THEAD_STICKY}>
+          <tr>
+            <th className={DASHBOARD_TH_STICKY_SOFT} />
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'ไลน์' : 'Line'}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{periodLabel}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'Defect (ชิ้น)' : 'Defect qty'}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'OK (ชิ้น)' : 'OK qty'}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>
+              <button
+                type="button"
+                onClick={toggleNgRateSort}
+                className="inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-slate-200/70"
+              >
+                <span>Defect Rate%</span>
+                {ngRateSortDir === 'asc' ? (
+                  <ArrowUp size={13} className="shrink-0 text-blue-600" />
+                ) : (
+                  <ArrowDown size={13} className="shrink-0 text-blue-600" />
+                )}
+              </button>
+            </th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'จำนวน Part' : '# Parts'}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'Part หลัก' : 'Top Part'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.length === 0 ? (
+            <tr>
+              <td
+                colSpan={colCount}
+                className="border border-slate-100 px-3 py-12 text-center text-sm font-medium text-slate-600"
+              >
+                {th ? 'ไม่มีข้อมูล Defect ในช่วงนี้' : 'No Defect data in selected period'}
+              </td>
+            </tr>
+          ) : (
+            sortedRows.map((r) => {
+              const rowKey = `${r.lineId}|${r.period}`
+              const isExpanded = expandedKey === rowKey
+              const parts = r.parts ?? []
+              const canExpand = parts.length > 0
+              return (
+                <Fragment key={rowKey}>
+                  <tr className="hover:bg-slate-50/80">
+                    <td className="border border-slate-100 px-2 py-2 text-center">
+                      {canExpand ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedKey(isExpanded ? null : rowKey)}
+                          className="inline-flex rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                          aria-label={isExpanded ? (th ? 'ย่อรายละเอียด' : 'Collapse') : (th ? 'ขยายรายละเอียด Part' : 'Expand parts')}
+                        >
+                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
+                      ) : (
+                        <span className="inline-block w-6" />
+                      )}
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">{r.lineCode}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">{r.period}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">{r.ngQty.toLocaleString()}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">{r.okQty.toLocaleString()}</td>
+                    <td className="border border-slate-100 px-3 py-2">
+                      <span
+                        className={`rounded px-2 py-0.5 font-bold ${r.ngRate >= 0.05 ? 'bg-red-100 text-red-700' : r.ngRate >= 0.02 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}
+                      >
+                        {(r.ngRate * 100).toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-center font-semibold text-slate-700">
+                      {r.defectivePartCount ?? parts.length}
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">
+                      {formatTopPartDisplay(r.topPart)}
+                    </td>
+                  </tr>
+                  {isExpanded && canExpand && (
+                    <tr>
+                      <td colSpan={colCount} className="border border-slate-100 bg-slate-50/50 px-4 py-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {th ? 'รายละเอียด Defect ตาม Part' : 'Defect by part'}
+                        </p>
+                        <NgPartDetailMiniTable parts={parts} th={th} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })
+          )}
+        </tbody>
+      </table>
     </div>
   )
 }
