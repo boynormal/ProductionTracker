@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+import { parseThaiCalendarDateUtc } from '@/lib/time-utils'
 import { otPlanBatchSchema } from '@/lib/validations/production'
 import type { Prisma } from '@prisma/client'
 
@@ -260,11 +261,6 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.otplan.write', {
-    apiPath: req.nextUrl.pathname,
-  })
-  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
   try {
     const raw = await req.json()
     const parsed = otPlanBatchSchema.safeParse(raw)
@@ -272,8 +268,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
+    type ParsedItem = (typeof parsed.data.items)[number]
+    const preparedItems: Array<{ item: ParsedItem; planDate: Date }> = []
+    for (const item of parsed.data.items) {
+      const planDate = parseThaiCalendarDateUtc(item.planDate)
+      if (!planDate) {
+        return NextResponse.json({ error: 'planDate must be a valid YYYY-MM-DD date' }, { status: 400 })
+      }
+      preparedItems.push({ item, planDate })
+    }
+
+    const requestedLineIds = [...new Set(preparedItems.map(({ item }) => item.lineId))]
+    const targetLines = await prisma.line.findMany({
+      where: { id: { in: requestedLineIds }, isActive: true },
+      select: {
+        id: true,
+        sectionId: true,
+        section: {
+          select: {
+            divisionId: true,
+            division: { select: { departmentId: true } },
+          },
+        },
+      },
+    })
+    if (targetLines.length !== requestedLineIds.length) {
+      return NextResponse.json({ error: 'One or more lines are invalid or inactive' }, { status: 400 })
+    }
+
+    const targetPermissions = await Promise.all(
+      targetLines.map((line) =>
+        checkPermissionForSession(session, 'api.production.otplan.write', {
+          apiPath: req.nextUrl.pathname,
+          lineId: line.id,
+          sectionId: line.sectionId,
+          divisionId: line.section?.divisionId,
+          departmentId: line.section?.division.departmentId,
+        }),
+      ),
+    )
+    if (targetPermissions.some((allowed) => !allowed)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const results = await prisma.$transaction(
-      parsed.data.items.map((item) => {
+      preparedItems.map(({ item, planDate }) => {
         const hasRemark = Object.prototype.hasOwnProperty.call(item, 'remark')
         const update: Prisma.OtPlanUpdateInput = { plannedHours: item.plannedHours }
         if (hasRemark) update.remark = item.remark ?? null
@@ -282,13 +321,13 @@ export async function POST(req: NextRequest) {
           where: {
             lineId_planDate: {
               lineId: item.lineId,
-              planDate: new Date(item.planDate),
+              planDate,
             },
           },
           update,
           create: {
             lineId: item.lineId,
-            planDate: new Date(item.planDate),
+            planDate,
             plannedHours: item.plannedHours,
             remark: item.remark ?? null,
           },
