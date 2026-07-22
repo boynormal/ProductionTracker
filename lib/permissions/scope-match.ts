@@ -15,6 +15,12 @@ function normalize(v: string | null | undefined): string {
   return String(v ?? '').trim()
 }
 
+function exactValueMatch(actual: string | null | undefined, expected: string | null | undefined): boolean {
+  const normalizedActual = normalize(actual)
+  const normalizedExpected = normalize(expected)
+  return Boolean(normalizedActual && normalizedExpected && normalizedActual === normalizedExpected)
+}
+
 function pathMatch(actualPath: string, expectedPrefix: string): boolean {
   const a = normalize(actualPath)
   const b = normalize(expectedPrefix)
@@ -31,15 +37,15 @@ export function scopeMatches(
     case 'GLOBAL':
       return true
     case 'DEPARTMENT':
-      return normalize(context.departmentId) === normalize(scopeValue)
+      return exactValueMatch(context.departmentId, scopeValue)
     case 'DIVISION':
-      return normalize(context.divisionId) === normalize(scopeValue)
+      return exactValueMatch(context.divisionId, scopeValue)
     case 'SECTION':
-      return normalize(context.sectionId) === normalize(scopeValue)
+      return exactValueMatch(context.sectionId, scopeValue)
     case 'LINE':
-      return normalize(context.lineId) === normalize(scopeValue)
+      return exactValueMatch(context.lineId, scopeValue)
     case 'MACHINE':
-      return normalize(context.machineId) === normalize(scopeValue)
+      return exactValueMatch(context.machineId, scopeValue)
     case 'SHIFT':
       return normalize(context.shiftType) === normalize(scopeValue)
     case 'MENU':
