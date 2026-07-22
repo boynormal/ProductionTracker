@@ -5,6 +5,8 @@ import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
 import { calcAvailability, calcPerformance, calcQuality, calcOEE } from '@/lib/utils/oee'
+import { getProductionReportLineAccess } from '@/lib/permissions/production-report-access'
+import type { Prisma } from '@prisma/client'
 
 /** รวม Session ที่ยังเปิดกะ — ไม่เช่นนั้นรายงานจะว่างจนกว่าจะปิดกะ */
 const REPORT_SESSION_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const
@@ -64,26 +66,27 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // Resolve org hierarchy filter → most specific wins: section > division > department
-  let lineWhere: Record<string, unknown> = {}
+  // Resolve the requested org hierarchy, then intersect it with the viewer's
+  // line-level report permission so scoped grants cannot expose other lines.
+  let candidateLineWhere: Prisma.LineWhereInput = {}
   if (sectionId) {
-    lineWhere = { line: { sectionId } }
+    candidateLineWhere = { sectionId }
   } else if (divisionId) {
-    const divSections = await prisma.section.findMany({
-      where: { divisionId, isActive: true },
-      select: { id: true },
-    })
-    lineWhere = { line: { sectionId: { in: divSections.map((s) => s.id) } } }
+    candidateLineWhere = { section: { divisionId } }
   } else if (departmentId) {
-    const deptDivisions = await prisma.division.findMany({
-      where: { departmentId, isActive: true },
-      select: { id: true },
-    })
-    const deptSections = await prisma.section.findMany({
-      where: { divisionId: { in: deptDivisions.map((d) => d.id) }, isActive: true },
-      select: { id: true },
-    })
-    lineWhere = { line: { sectionId: { in: deptSections.map((s) => s.id) } } }
+    candidateLineWhere = { section: { division: { departmentId } } }
+  }
+
+  const lineAccess = await getProductionReportLineAccess(session, {
+    apiPath: req.nextUrl.pathname,
+    where: candidateLineWhere,
+  })
+  if (!lineAccess.globalAllowed && lineAccess.lines.length === 0) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const lineWhere = {
+    line: { id: { in: lineAccess.lines.map((line) => line.id) } },
   }
 
   const [records, holidayRows] = await Promise.all([
