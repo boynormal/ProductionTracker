@@ -24,13 +24,13 @@ export default async function ReportPage() {
       select: { id: true, sectionCode: true, sectionName: true, divisionId: true },
       orderBy: { sectionCode: 'asc' },
     }),
-    getProductionReportLineAccess(session, { where: { isActive: true } }),
+    getProductionReportLineAccess(session),
   ])
 
   if (!lineAccess.globalAllowed && lineAccess.lines.length === 0) redirect('/')
 
   const allowedSectionIds = new Set(
-    lineAccess.lines.flatMap((line) => (line.sectionId ? [line.sectionId] : [])),
+    lineAccess.lines.flatMap((line) => (line.isActive && line.sectionId ? [line.sectionId] : [])),
   )
   const visibleSections = sections.filter((section) => allowedSectionIds.has(section.id))
   const allowedDivisionIds = new Set(visibleSections.map((section) => section.divisionId))

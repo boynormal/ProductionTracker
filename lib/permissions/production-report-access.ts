@@ -4,6 +4,7 @@ import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 const reportLineSelect = {
   id: true,
+  isActive: true,
   sectionId: true,
   section: {
     select: {
