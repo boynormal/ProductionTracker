@@ -12,6 +12,7 @@ import {
   getThaiReportingDateUTC,
 } from '@/lib/time-utils'
 import { checkPermission } from '@/lib/permissions/guard'
+import { LINE_PERMISSION_SELECT, permissionContextForLine } from '@/lib/permissions/resource-context'
 
 const schema = z.object({
   sessionId:      z.string(),
@@ -137,26 +138,39 @@ export async function POST(req: NextRequest) {
     if (!operatorCtx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const operatorId = operatorCtx.operatorId
 
+    const body   = await req.json()
+    const parsed = schema.safeParse(body)
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+    const data = parsed.data
+
+    // Validate session exists (needed for target-line permission context)
+    const prodSession = await prisma.productionSession.findUnique({
+      where: { id: data.sessionId },
+      include: {
+        line: { select: LINE_PERMISSION_SELECT },
+      },
+    })
+    if (!prodSession) return NextResponse.json({ error: 'Session ไม่พบ กรุณาสร้าง Session ก่อน' }, { status: 404 })
+
     if (operatorCtx.source === 'nextauth') {
       const dbUser = await prisma.user.findUnique({
         where: { id: operatorId },
-        select: { role: true, sectionId: true },
+        select: { role: true },
       })
       if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       const canWrite = await checkPermission({
         userId: operatorId,
         role: dbUser.role,
         permissionKey: 'api.production.record.write',
-        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
+        context: permissionContextForLine(
+          { apiPath: req.nextUrl.pathname },
+          prodSession.line,
+          { machineId: prodSession.machineId, shiftType: prodSession.shiftType },
+        ),
       })
       if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-
-    const body   = await req.json()
-    const parsed = schema.safeParse(body)
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
-
-    const data = parsed.data
 
     const recordOperatorId = (data.recordOperatorId?.trim() || operatorId) as string
     if (!recordOperatorId) {
@@ -180,10 +194,6 @@ export async function POST(req: NextRequest) {
         error: `อนุญาตบันทึกได้เฉพาะชั่วโมงที่ ${allowedMin}–${currentSlot} เท่านั้น (ปัจจุบัน+ย้อนหลัง 1 ชม.)`,
       }, { status: 400 })
     }
-
-    // Validate session exists
-    const prodSession = await prisma.productionSession.findUnique({ where: { id: data.sessionId } })
-    if (!prodSession) return NextResponse.json({ error: 'Session ไม่พบ กรุณาสร้าง Session ก่อน' }, { status: 404 })
 
     if (prodSession.status !== 'IN_PROGRESS') {
       return NextResponse.json(

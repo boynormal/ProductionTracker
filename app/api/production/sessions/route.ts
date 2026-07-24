@@ -5,6 +5,7 @@ import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { getCurrentShift } from '@/lib/utils/shift'
 import { getShiftSessionDateUTC, getThaiReportingDateUTC, parseThaiPickerDateToUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { checkPermission } from '@/lib/permissions/guard'
+import { LINE_PERMISSION_SELECT, permissionContextForLine } from '@/lib/permissions/resource-context'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 
 const WITH_LEGACY_SESSION_DATE_FALLBACK = false
@@ -149,16 +150,6 @@ export async function POST(req: NextRequest) {
     })
     if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (operatorCtx.source === 'nextauth') {
-      const canWrite = await checkPermission({
-        userId: operatorId,
-        role: dbUser.role,
-        permissionKey: 'api.production.session.write',
-        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
-      })
-      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const body = await req.json()
 
     if (!body.lineId) {
@@ -167,7 +158,12 @@ export async function POST(req: NextRequest) {
 
     const line = await prisma.line.findUnique({
       where: { id: body.lineId },
-      select: { id: true, lineCode: true, lineName: true, isActive: true },
+      select: {
+        ...LINE_PERMISSION_SELECT,
+        lineCode: true,
+        lineName: true,
+        isActive: true,
+      },
     })
     if (!line) {
       return NextResponse.json({ error: 'Line not found' }, { status: 404 })
@@ -180,6 +176,25 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       )
+    }
+
+    // Use server shift for both authorization and session creation.
+    const startTime = new Date()
+    const nowMs = startTime.getTime()
+    const shiftType = getCurrentShift()
+
+    if (operatorCtx.source === 'nextauth') {
+      const canWrite = await checkPermission({
+        userId: operatorId,
+        role: dbUser.role,
+        permissionKey: 'api.production.session.write',
+        context: permissionContextForLine(
+          { apiPath: req.nextUrl.pathname },
+          line,
+          { machineId: body.machineId ?? null, shiftType },
+        ),
+      })
+      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const activeTargetCount = await prisma.linePartTarget.count({
@@ -240,9 +255,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ✅ ใช้เวลา server เป็นแหล่งเดียว แล้วแปลงเป็นปฏิทินไทยอย่าง deterministic
-    const startTime = new Date()
-    const nowMs = startTime.getTime()
-    const shiftType   = getCurrentShift()
     const sessionDate = getShiftSessionDateUTC(shiftType, nowMs)
     const reportingDate = getThaiReportingDateUTC(nowMs)
 
