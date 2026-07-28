@@ -3,10 +3,16 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { calcMtbfMttr } from '@/lib/utils/mtbf'
 import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const canRead = await checkPermissionForSession(session, 'api.production.mtbf.read', {
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canRead) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const machineId = searchParams.get('machineId')

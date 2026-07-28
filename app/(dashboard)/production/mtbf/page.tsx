@@ -1,9 +1,17 @@
 import { auth } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { MtbfClient } from './MtbfClient'
 
 export default async function MtbfPage() {
-  await auth()
+  const session = await auth()
+  if (!session) redirect('/login')
+
+  const canView = await checkPermissionForSession(session, 'menu.production.mtbf', {
+    menuPath: '/production/mtbf',
+  })
+  if (!canView) redirect('/')
 
   const [divisions, lines] = await Promise.all([
     prisma.division.findMany({
