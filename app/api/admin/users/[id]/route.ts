@@ -9,6 +9,15 @@ import { isPinUsedByAnotherUser } from '@/lib/user-pin-uniqueness'
 
 type Params = { params: Promise<{ id: string }> }
 
+/** Only active ADMIN accounts may assign the ADMIN role (blocks users.write delegation escalation). */
+async function actorMayAssignAdminRole(actorUserId: string): Promise<boolean> {
+  const actor = await prisma.user.findUnique({
+    where: { id: actorUserId },
+    select: { role: true, isActive: true },
+  })
+  return Boolean(actor?.isActive && actor.role === 'ADMIN')
+}
+
 export async function GET(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -38,6 +47,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
   const { password, capablePartIds, ...rest } = parsed.data
+
+  if (rest.role === 'ADMIN') {
+    const actorId = session.user?.id
+    if (!actorId || !(await actorMayAssignAdminRole(actorId))) {
+      return NextResponse.json(
+        { error: 'Only an active Admin may assign the ADMIN role' },
+        { status: 403 },
+      )
+    }
+  }
 
   const updateData: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(rest)) {

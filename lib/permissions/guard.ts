@@ -148,11 +148,16 @@ export async function checkPermissionForSession(
   context?: PermissionCheckContext,
 ): Promise<boolean> {
   const userId = session.user?.id
-  const role = session.user?.role
-  if (!userId || !role) return false
+  if (!userId) return false
+  // Always re-read role/active from DB — JWT can stay valid after deactivate or demotion.
+  const dbUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, isActive: true },
+  })
+  if (!dbUser?.isActive) return false
   return checkPermission({
     userId,
-    role,
+    role: dbUser.role,
     permissionKey,
     context,
   })

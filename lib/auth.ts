@@ -75,18 +75,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return false
     },
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id           = user.id
-        token.employeeCode = (user as any).employeeCode
-        token.role         = (user as any).role
+        token.employeeCode = (user as { employeeCode?: string }).employeeCode
+        token.role         = (user as { role?: string }).role
+      }
+      // Re-validate on token refresh so deactivate/demote revoke access before JWT expiry.
+      if (typeof token.id === 'string') {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { role: true, isActive: true, employeeCode: true },
+        })
+        if (!dbUser?.isActive) return null
+        token.role = dbUser.role
+        token.employeeCode = dbUser.employeeCode
       }
       return token
     },
-    session({ session, token }) {
-      session.user.id           = token.id as string
-      session.user.employeeCode = token.employeeCode as string
-      session.user.role         = token.role as string
+    async session({ session, token }) {
+      if (typeof token.id !== 'string') {
+        // Invalidate identity when jwt callback cleared the token (deactivated user).
+        delete (session as { user?: unknown }).user
+        return session
+      }
+      const dbUser = await prisma.user.findUnique({
+        where: { id: token.id },
+        select: { role: true, isActive: true, employeeCode: true },
+      })
+      if (!dbUser?.isActive) {
+        delete (session as { user?: unknown }).user
+        return session
+      }
+      session.user.id           = token.id
+      session.user.employeeCode = dbUser.employeeCode
+      session.user.role         = dbUser.role
       return session
     },
   },
@@ -94,5 +117,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/login',
     error:  '/login',
   },
-  session: { strategy: 'jwt' },
+  // updateAge: 0 forces jwt refresh on each session read so isActive/role stay current.
+  session: { strategy: 'jwt', updateAge: 0 },
 })
