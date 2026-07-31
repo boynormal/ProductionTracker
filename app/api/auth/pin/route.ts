@@ -7,10 +7,12 @@ import {
   SCAN_COOKIE_MAX_AGE_SEC,
 } from '@/lib/scan-session'
 import {
+  checkPinOnlyGlobalRateLimit,
   checkPinRateLimit,
   pinRateLimitKey,
   pinRateLimitKeyPinOnly,
   registerPinFailure,
+  registerPinOnlyGlobalFailure,
   registerPinSuccess,
 } from '@/lib/security/pin-rate-limit'
 
@@ -46,6 +48,17 @@ export async function POST(req: NextRequest) {
         { status: 429, headers: { 'Retry-After': String(guard.retryAfterSec) } },
       )
     }
+    // PIN-only is a 4-digit search space — enforce a process-wide budget so forged
+    // X-Forwarded-For / many IPs cannot spray the full PIN range.
+    if (!useEmployeeCode) {
+      const globalGuard = checkPinOnlyGlobalRateLimit()
+      if (!globalGuard.allowed) {
+        return NextResponse.json(
+          { error: 'พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง', retryAfterSec: globalGuard.retryAfterSec },
+          { status: 429, headers: { 'Retry-After': String(globalGuard.retryAfterSec) } },
+        )
+      }
+    }
 
     let user: UserPinLogin
 
@@ -74,11 +87,13 @@ export async function POST(req: NextRequest) {
       })
       if (matches.length === 0) {
         registerPinFailure(rateKey)
+        registerPinOnlyGlobalFailure()
         return NextResponse.json({ error: 'PIN ไม่ถูกต้อง' }, { status: 401 })
       }
       if (matches.length > 1) {
         console.error('PIN login: multiple active users share the same PIN; enforce uniqueness in admin.')
         registerPinFailure(rateKey)
+        registerPinOnlyGlobalFailure()
         return NextResponse.json(
           { error: 'ระบบตรวจพบ PIN ซ้ำ กรุณาติดต่อผู้ดูแลระบบ' },
           { status: 409 },

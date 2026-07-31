@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import type { NextRequest } from 'next/server'
+import { clientIpFromRequest } from '@/lib/security/client-ip'
 
 /**
  * Cron / scheduler HTTP auth (used by GET handlers that external schedulers call).
@@ -27,14 +28,6 @@ function getBearerToken(req: NextRequest): string | null {
   const auth = req.headers.get('authorization') ?? ''
   const m = /^Bearer\s+(.+)$/i.exec(auth.trim())
   return m?.[1]?.trim() ?? null
-}
-
-function clientIp(req: NextRequest): string {
-  const xff = req.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0]?.trim() || 'unknown'
-  const xri = req.headers.get('x-real-ip')
-  if (xri) return xri.trim()
-  return 'unknown'
 }
 
 function parseAllowlist(raw: string | undefined): string[] {
@@ -81,7 +74,7 @@ function isValidCronHmac(req: NextRequest): boolean {
 function isClientIpInCronAllowlist(req: NextRequest): boolean {
   const list = parseAllowlist(process.env.CRON_IP_ALLOWLIST)
   if (list.length === 0) return false
-  const ip = clientIp(req)
+  const ip = clientIpFromRequest(req)
   return list.includes(ip)
 }
 
