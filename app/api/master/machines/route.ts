@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+import { machineSchema } from '@/lib/validations/master'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -52,7 +53,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const body = await req.json()
-  const machine = await prisma.machine.create({ data: body })
+  const body = await req.json().catch(() => null)
+  const parsed = machineSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  // Allowlisted fields only — never pass raw body (blocks nested images/id mass-assignment).
+  const machine = await prisma.machine.create({ data: parsed.data })
   return NextResponse.json({ data: machine }, { status: 201 })
 }
