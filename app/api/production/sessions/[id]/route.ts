@@ -63,6 +63,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     )
   }
 
+  // Completing must start from IN_PROGRESS only. CANCELLED→COMPLETED would
+  // resurrect soft-voided sessions into dashboard/reports/OT/MTBF and bypass
+  // the hard deny on CANCELLED→IN_PROGRESS (and privileged restore once gated).
+  if (d.status === 'COMPLETED' && existing.status !== 'IN_PROGRESS') {
+    return NextResponse.json(
+      {
+        error:
+          'ปิดกะได้เฉพาะ Session ที่กำลังผลิต (IN_PROGRESS) — Only IN_PROGRESS sessions can be completed.',
+      },
+      { status: 400 },
+    )
+  }
+
   if (isReopenShift) {
     const dbUser = await prisma.user.findUnique({
       where: { id: session.user.id! },
