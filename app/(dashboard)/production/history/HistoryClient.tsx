@@ -694,7 +694,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     return () => { cancelled = true }
   }, [reloadSessions])
 
-  // กรอง Lines ตามฝ่าย / Section / สาย / search (lineCode / lineName / section / ชื่อฝ่าย / แผนก)
+  // กรอง Lines ตามฝ่าย / Section / สาย / search (lineCode / lineName / section / ชื่อฝ่าย / แผนก / Part)
   const searchNorm = normalizeLine(search.trim())
   const filteredLines = lines.filter(l => {
     if (lineFilter && l.id !== lineFilter) return false
@@ -706,7 +706,18 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
     const hay = normalizeLine(
       `${l.lineCode} ${l.lineName ?? ''} ${l.section?.sectionName ?? ''} ${l.section?.sectionCode ?? ''} ${divName} ${l.section?.division?.department?.departmentName ?? ''}`
     )
-    return hay.includes(searchNorm)
+    if (hay.includes(searchNorm)) return true
+    return sessions.some(s => {
+      const lid = s.lineId ?? s.line?.id
+      if (lid !== l.id) return false
+      const records = Array.isArray(s.hourlyRecords) ? s.hourlyRecords : []
+      return records.some((r: any) => {
+        const partHay = normalizeLine(
+          `${r.part?.partSamco ?? ''} ${r.part?.partNo ?? ''} ${r.part?.partName ?? ''}`
+        )
+        return partHay.includes(searchNorm)
+      })
+    })
   })
 
   // Sessions ที่อยู่ใน filteredLines
@@ -989,7 +1000,7 @@ export function HistoryClient({ initialSessions, lines, defaultDate, userRole, c
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder={locale === 'th' ? 'สาย / ฝ่าย / Section...' : 'Line / division / section...'}
+              placeholder={locale === 'th' ? 'สาย / ฝ่าย / Section / Part...' : 'Line / division / section / part...'}
               className="w-full min-w-0 rounded-lg border border-slate-200 py-2 pl-8 pr-2 text-sm outline-none focus:border-blue-400"
             />
           </div>

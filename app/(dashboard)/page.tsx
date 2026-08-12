@@ -5,6 +5,9 @@ import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { enrichSessionsWithCyclePerformance } from '@/lib/production/enrich-dashboard-sessions'
 import { DashboardClient } from './DashboardLoader'
 
+/** Dashboard ใช้เฉพาะฝ่าย/ส่วนในกลุ่มรหัส 22-xxx */
+const DASHBOARD_ORG_CODE_PREFIX = '22'
+
 export default async function DashboardPage() {
   const session = await auth()
   const withLegacySessionDateFallback = false
@@ -37,12 +40,18 @@ export default async function DashboardPage() {
     prisma.notification.count({ where: { isRead: false } }),
     prisma.machine.count({ where: { isActive: true } }),
     prisma.division.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        divisionCode: { startsWith: DASHBOARD_ORG_CODE_PREFIX },
+      },
       orderBy: { divisionCode: 'asc' },
       select: { id: true, divisionCode: true, divisionName: true },
     }),
     prisma.section.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        sectionCode: { startsWith: DASHBOARD_ORG_CODE_PREFIX },
+      },
       orderBy: { sectionCode: 'asc' },
       select: {
         id: true,

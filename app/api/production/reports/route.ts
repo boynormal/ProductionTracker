@@ -86,14 +86,16 @@ export async function GET(req: NextRequest) {
     lineWhere = { line: { sectionId: { in: deptSections.map((s) => s.id) } } }
   }
 
-  const [records, holidayRows] = await Promise.all([
+  const sessionWhere = {
+    status: { in: [...REPORT_SESSION_STATUSES] },
+    ...reportingDateRangeWhere(fromDate, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
+    ...lineWhere,
+  }
+
+  const [records, holidayRows, reportSessions, breakdownCategories] = await Promise.all([
     prisma.hourlyRecord.findMany({
       where: {
-        session: {
-          status: { in: [...REPORT_SESSION_STATUSES] },
-          ...reportingDateRangeWhere(fromDate, toExclusive, WITH_LEGACY_SESSION_DATE_FALLBACK),
-          ...lineWhere,
-        },
+        session: sessionWhere,
       },
       select: {
         okQty: true,
@@ -136,6 +138,20 @@ export async function GET(req: NextRequest) {
     prisma.holiday.findMany({
       where: { date: { gte: fromDate, lt: toExclusive }, isActive: true },
       select: { date: true },
+    }),
+    prisma.productionSession.findMany({
+      where: sessionWhere,
+      select: {
+        id: true,
+        lineId: true,
+        reportingDate: true,
+        normalHours: true,
+      },
+    }),
+    prisma.problemCategory.findMany({
+      where: { type: 'BREAKDOWN', isActive: true },
+      orderBy: { code: 'asc' },
+      select: { id: true, code: true, name: true },
     }),
   ])
 
@@ -220,6 +236,7 @@ export async function GET(req: NextRequest) {
     lineCode: string
     normalCapacity: number
     normalHoursUsed: number
+    bdMin: number
     sessionDates: Set<string>  // distinct working-day reportingDates that had sessions
   }
 
@@ -231,6 +248,20 @@ export async function GET(req: NextRequest) {
   const ngLineMap = new Map<string, NgLineAgg>()
   const lineIdleMap = new Map<string, LineIdleAgg>()
   const countedIdleSessions = new Set<string>()
+  /** hourly-record hours per line×period (1 record = 1 hr) */
+  const workHoursMap = new Map<string, number>()
+  /** Fixed normal hours per session that exists (DAY/NIGHT), keyed line×period */
+  const plannedBaseMap = new Map<string, number>()
+  /** Recorded OT hours (isOvertimeHour) per line×period */
+  const otHoursMap = new Map<string, number>()
+
+  for (const sess of reportSessions) {
+    if (!sess.reportingDate || !sess.lineId) continue
+    const period = periodKey(sess.reportingDate, granularity)
+    const lk = `${sess.lineId}|${period}`
+    const normal = typeof sess.normalHours === 'number' && sess.normalHours > 0 ? sess.normalHours : 8
+    plannedBaseMap.set(lk, (plannedBaseMap.get(lk) ?? 0) + normal)
+  }
 
   for (const r of records) {
     if (!r.session.reportingDate) continue
@@ -289,6 +320,11 @@ export async function GET(req: NextRequest) {
     l.ngQty += ng
     l.bdMin += bd
     l.slotCount += 1
+
+    workHoursMap.set(lk, (workHoursMap.get(lk) ?? 0) + 1)
+    if (r.isOvertimeHour) {
+      otHoursMap.set(lk, (otHoursMap.get(lk) ?? 0) + 1)
+    }
 
     // Breakdown detail aggregation (per line × period × category)
     if (r.breakdownLogs.length > 0) {
@@ -380,6 +416,7 @@ export async function GET(req: NextRequest) {
           lineCode: r.session.line.lineCode,
           normalCapacity: 0,
           normalHoursUsed: 0,
+          bdMin: 0,
           sessionDates: new Set<string>(),
         })
       }
@@ -390,7 +427,10 @@ export async function GET(req: NextRequest) {
         countedIdleSessions.add(sk)
         idle.normalCapacity += r.session.normalHours
       }
-      if (!r.isOvertimeHour) idle.normalHoursUsed += 1
+      if (!r.isOvertimeHour) {
+        idle.normalHoursUsed += 1
+        idle.bdMin += bd
+      }
     }
 
     if (!(r.machineId && r.machine)) {
@@ -585,8 +625,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const byLineBreakdown = Array.from(bdLineMap.values())
-    .map((e) => {
+  const byLineBreakdown = Array.from(bdLineMap.entries())
+    .map(([lk, e]) => {
       const cats = Array.from(e.categories.values()).sort((a, b) => b.bdMin - a.bdMin)
       return {
         lineId: e.lineId,
@@ -594,6 +634,8 @@ export async function GET(req: NextRequest) {
         period: e.period,
         bdCount: e.bdCount,
         bdMin: e.bdMin,
+        workHours: workHoursMap.get(lk) ?? 0,
+        plannedHours: (plannedBaseMap.get(lk) ?? 0) + (otHoursMap.get(lk) ?? 0),
         topCategory: cats[0] ?? null,
         categories: cats,
       }
@@ -636,6 +678,8 @@ export async function GET(req: NextRequest) {
     .map((e) => {
       const sessionDays = e.sessionDates.size
       const noSessionDays = Math.max(0, totalWorkingDays - sessionDays)
+      const breakdownHours = Math.round((e.bdMin / 60) * 100) / 100
+      const usedHours = Math.max(0, Math.round((e.normalHoursUsed - breakdownHours) * 100) / 100)
       const inShiftIdleHours = Math.max(0, e.normalCapacity - e.normalHoursUsed)
       return {
         lineId: e.lineId,
@@ -649,10 +693,12 @@ export async function GET(req: NextRequest) {
             : 0,
         normalCapacity: e.normalCapacity,
         normalHoursUsed: e.normalHoursUsed,
+        breakdownHours,
+        usedHours,
         inShiftIdleHours,
         utilizationPct:
           e.normalCapacity > 0
-            ? Math.round((e.normalHoursUsed / e.normalCapacity) * 1000) / 10
+            ? Math.round((usedHours / e.normalCapacity) * 1000) / 10
             : 0,
       }
     })
@@ -665,6 +711,7 @@ export async function GET(req: NextRequest) {
     byMachine,
     byLine,
     byLineBreakdown,
+    breakdownCategories,
     byLineNg,
     byLineIdle,
     operatorMonthMatrix,
