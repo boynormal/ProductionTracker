@@ -26,6 +26,7 @@ const BD_DONUT_COLORS = [
   '#b45309',
 ] as const
 import { format } from 'date-fns'
+import { formatThaiDateUTCISO, getThaiReportingDateUTC } from '@/lib/time-utils'
 import { BarChart3, Loader2, Users, Package, Cog, Search, Download, Wrench, XCircle, ArrowUp, ArrowDown, ArrowUpDown, ChevronDown, ChevronRight } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -65,8 +66,14 @@ function monthPickerToRange(ym: string): { from: string; to: string } | null {
 }
 
 interface Props {
+  /** Thai reporting date (08:00 cutoff), YYYY-MM-DD — not host-local calendar today */
+  defaultDate: string
   divisions: { id: string; divisionCode: string; divisionName: string; departmentId: string }[]
   sections: { id: string; sectionCode: string; sectionName: string; divisionId: string }[]
+}
+
+function reportingDateYmd(): string {
+  return formatThaiDateUTCISO(getThaiReportingDateUTC())
 }
 
 function matchesOperatorSearch(query: string, name: string, employeeCode: string): boolean {
@@ -81,13 +88,12 @@ function matchesOperatorSearch(query: string, name: string, employeeCode: string
   )
 }
 
-export function ReportClient({ divisions, sections }: Props) {
+export function ReportClient({ defaultDate, divisions, sections }: Props) {
   const { locale } = useI18n()
   const th = locale === 'th'
 
-  const todayYmd = format(new Date(), 'yyyy-MM-dd')
-  const [dateFrom, setDateFrom] = useState(todayYmd)
-  const [dateTo, setDateTo] = useState(todayYmd)
+  const [dateFrom, setDateFrom] = useState(defaultDate)
+  const [dateTo, setDateTo] = useState(defaultDate)
   const [divisionFilter, setDivisionFilter] = useState('all')
   const [sectionFilter, setSectionFilter] = useState('all')
   const [granularity, setGranularity] = useState<Granularity>('day')
@@ -464,7 +470,7 @@ export function ReportClient({ divisions, sections }: Props) {
                 onClick={() => {
                   setGranularity('day')
                   setBdView('daily')
-                  const d = format(new Date(), 'yyyy-MM-dd')
+                  const d = reportingDateYmd()
                   setDateFrom(d)
                   setDateTo(d)
                 }}

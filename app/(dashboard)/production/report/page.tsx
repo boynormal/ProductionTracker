@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { formatThaiDateUTCISO, getThaiReportingDateUTC } from '@/lib/time-utils'
 import { ReportClient } from './ReportLoader'
 
 /** รายงานการผลิตใช้เฉพาะฝ่าย/ส่วนในกลุ่มรหัส 22-xxx */
@@ -7,6 +8,7 @@ const REPORT_ORG_CODE_PREFIX = '22'
 
 export default async function ReportPage() {
   await auth()
+  const defaultDate = formatThaiDateUTCISO(getThaiReportingDateUTC())
 
   const [divisions, sections] = await Promise.all([
     prisma.division.findMany({
@@ -29,6 +31,7 @@ export default async function ReportPage() {
 
   return (
     <ReportClient
+      defaultDate={defaultDate}
       divisions={JSON.parse(JSON.stringify(divisions))}
       sections={JSON.parse(JSON.stringify(sections))}
     />

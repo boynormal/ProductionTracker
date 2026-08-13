@@ -7,6 +7,7 @@ import { Calendar as CalendarIcon } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils/cn'
+import { formatThaiDateUTCISO, getThaiReportingDateUTC } from '@/lib/time-utils'
 
 type Props = {
   value: string
@@ -64,7 +65,10 @@ export function ReportDayPicker({ value, onChange, th = true, className }: Props
             <p className="text-xs font-medium text-slate-500">{th ? 'เลือกวันเดียว' : 'Pick one day'}</p>
             <button
               type="button"
-              onClick={() => apply(new Date())}
+              onClick={() => {
+                onChange(formatThaiDateUTCISO(getThaiReportingDateUTC()))
+                setOpen(false)
+              }}
               className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-blue-50"
             >
               {th ? 'วันนี้' : 'Today'}
