@@ -111,7 +111,12 @@ export async function GET(req: NextRequest) {
             reportingDate: true,
             sessionDate: true,
             lineId: true,
-            line: { select: { lineCode: true } },
+            line: {
+              select: {
+                lineCode: true,
+                section: { select: { sectionCode: true, sectionName: true } },
+              },
+            },
           },
         },
         operator: {
@@ -175,8 +180,20 @@ export async function GET(req: NextRequest) {
     partId: string
     partSamco: number
     partName: string
+    lineId: string
+    lineCode: string
     period: string
+    workHours: number
+  }
+
+  type PartLineAgg = {
+    lineId: string
+    lineCode: string
+    sectionCode: string
+    sectionName: string
     okQty: number
+    ngQty: number
+    bdMin: number
   }
 
   type PartRow = {
@@ -185,6 +202,9 @@ export async function GET(req: NextRequest) {
     partName: string
     period: string
     okQty: number
+    ngQty: number
+    bdMin: number
+    lines: Map<string, PartLineAgg>
   }
 
   type McAgg = {
@@ -266,7 +286,8 @@ export async function GET(req: NextRequest) {
   for (const r of records) {
     if (!r.session.reportingDate) continue
     const period = periodKey(r.session.reportingDate, granularity)
-    const opKey = `${r.operatorId}|${r.partId}|${period}`
+    const lineId = r.session.lineId
+    const opKey = `${r.operatorId}|${r.partId}|${lineId}|${period}`
     const pKey = `${r.partId}|${period}`
 
     const opName = `${r.operator.firstName} ${r.operator.lastName}`.trim()
@@ -279,11 +300,18 @@ export async function GET(req: NextRequest) {
         partId: r.partId,
         partSamco: r.part.partSamco,
         partName: r.part.partName,
+        lineId,
+        lineCode: r.session.line.lineCode,
         period,
-        okQty: 0,
+        workHours: 0,
       })
     }
-    opMap.get(opKey)!.okQty += r.okQty
+    opMap.get(opKey)!.workHours += 1
+
+    let bd = 0
+    for (const b of r.breakdownLogs) bd += b.breakTimeMin
+    let ng = 0
+    for (const n of r.ngLogs) ng += n.ngQty
 
     if (!partMap.has(pKey)) {
       partMap.set(pKey, {
@@ -292,14 +320,33 @@ export async function GET(req: NextRequest) {
         partName: r.part.partName,
         period,
         okQty: 0,
+        ngQty: 0,
+        bdMin: 0,
+        lines: new Map(),
       })
     }
-    partMap.get(pKey)!.okQty += r.okQty
-
-    let bd = 0
-    for (const b of r.breakdownLogs) bd += b.breakTimeMin
-    let ng = 0
-    for (const n of r.ngLogs) ng += n.ngQty
+    const partEntry = partMap.get(pKey)!
+    partEntry.okQty += r.okQty
+    partEntry.ngQty += ng
+    partEntry.bdMin += bd
+    if (r.session.lineId) {
+      const lineId = r.session.lineId
+      if (!partEntry.lines.has(lineId)) {
+        partEntry.lines.set(lineId, {
+          lineId,
+          lineCode: r.session.line.lineCode,
+          sectionCode: r.session.line.section?.sectionCode ?? '',
+          sectionName: r.session.line.section?.sectionName ?? '',
+          okQty: 0,
+          ngQty: 0,
+          bdMin: 0,
+        })
+      }
+      const partLine = partEntry.lines.get(lineId)!
+      partLine.okQty += r.okQty
+      partLine.ngQty += ng
+      partLine.bdMin += bd
+    }
 
     const lk = `${r.session.lineId}|${period}`
     if (!lineMap.has(lk)) {
@@ -468,14 +515,37 @@ export async function GET(req: NextRequest) {
     if (c !== 0) return c
     const p = a.partSamco - b.partSamco
     if (p !== 0) return p
+    const l = a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' })
+    if (l !== 0) return l
     return a.period.localeCompare(b.period)
   })
 
-  const byPart = Array.from(partMap.values()).sort((a, b) => {
-    const p = a.partSamco - b.partSamco
-    if (p !== 0) return p
-    return a.period.localeCompare(b.period)
-  })
+  const byPart = Array.from(partMap.values())
+    .map((e) => {
+      const lines = Array.from(e.lines.values()).sort((a, b) => {
+        if (b.okQty !== a.okQty) return b.okQty - a.okQty
+        return a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' })
+      })
+      const total = e.okQty + e.ngQty
+      return {
+        partId: e.partId,
+        partSamco: e.partSamco,
+        partName: e.partName,
+        period: e.period,
+        okQty: e.okQty,
+        ngQty: e.ngQty,
+        bdMin: e.bdMin,
+        ngRate: total > 0 ? e.ngQty / total : 0,
+        lineCount: lines.length,
+        topLine: lines[0] ?? null,
+        lines,
+      }
+    })
+    .sort((a, b) => {
+      const p = a.partSamco - b.partSamco
+      if (p !== 0) return p
+      return a.period.localeCompare(b.period)
+    })
 
   const byMachine = Array.from(mcMap.values())
     .map((m) => {
@@ -542,7 +612,7 @@ export async function GET(req: NextRequest) {
       employeeCode: string
       name: string
       /** index = วันที่ - 1 (วันที่ 1 → [0]) */
-      cells: { parts: { partSamco: number; partName: string; okQty: number }[] }[]
+      cells: { parts: { partSamco: number; partName: string; lineCode: string; workHours: number }[] }[]
     }[]
   } | null = null
 
@@ -550,7 +620,7 @@ export async function GET(req: NextRequest) {
     const { start: mStart, endExclusive: mEnd, daysInMonth, y, m } = utcMonthRangeFromDate(fromDate)
     const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`
 
-    type PartAgg = { partSamco: number; partName: string; okQty: number }
+    type PartAgg = { partSamco: number; partName: string; lineCode: string; workHours: number }
     const grid = new Map<string, Map<number, Map<string, PartAgg>>>()
 
     for (const r of records) {
@@ -566,15 +636,16 @@ export async function GET(req: NextRequest) {
       const opDays = grid.get(oid)!
       if (!opDays.has(day)) opDays.set(day, new Map())
       const dayParts = opDays.get(day)!
-      const pid = r.partId
-      const existing = dayParts.get(pid)
+      const cellKey = `${r.partId}|${r.session.lineId}`
+      const existing = dayParts.get(cellKey)
       if (existing) {
-        existing.okQty += r.okQty
+        existing.workHours += 1
       } else {
-        dayParts.set(pid, {
+        dayParts.set(cellKey, {
           partSamco: r.part.partSamco,
           partName: r.part.partName,
-          okQty: r.okQty,
+          lineCode: r.session.line.lineCode,
+          workHours: 1,
         })
       }
     }
@@ -608,11 +679,15 @@ export async function GET(req: NextRequest) {
       rows: rowKeys.map((operatorId) => {
         const opDays = grid.get(operatorId)!
         const mRow = meta.get(operatorId)!
-        const cells: { parts: { partSamco: number; partName: string; okQty: number }[] }[] = []
+        const cells: { parts: { partSamco: number; partName: string; lineCode: string; workHours: number }[] }[] = []
         for (let d = 1; d <= daysInMonth; d++) {
           const pmap = opDays.get(d)
           const parts = pmap ? Array.from(pmap.values()) : []
-          parts.sort((a, b) => a.partSamco - b.partSamco)
+          parts.sort((a, b) => {
+            const p = a.partSamco - b.partSamco
+            if (p !== 0) return p
+            return a.lineCode.localeCompare(b.lineCode, 'th', { numeric: true, sensitivity: 'base' })
+          })
           cells.push({ parts })
         }
         return {

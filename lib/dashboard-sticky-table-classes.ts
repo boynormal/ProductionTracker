@@ -8,6 +8,9 @@
 export const DASHBOARD_TABLE_WRAP =
   'w-full min-w-0 rounded-lg shadow-sm ring-1 ring-slate-200/80'
 
+/** กล่องตารางรายงาน — เลื่อนในกล่อง ให้ thead sticky ทำงาน และแท็บด้านบนยังเห็น */
+export const DASHBOARD_TABLE_SCROLL = 'max-w-full min-w-0 max-h-[min(70vh,52rem)] overflow-auto'
+
 /** ตารางกว้าง (ประวัติ / รายงานเมทริกซ์) */
 export const DASHBOARD_TABLE_WIDE = 'w-full min-w-[72rem] border-separate border-spacing-0 bg-white text-sm'
 

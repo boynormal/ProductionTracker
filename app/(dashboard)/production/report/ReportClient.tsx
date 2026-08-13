@@ -32,7 +32,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ReportDayPicker } from '@/components/production/ReportDayPicker'
 import { cn } from '@/lib/utils/cn'
 import {
-  DASHBOARD_MATRIX_TH_HEAD,
   DASHBOARD_TABLE_REPORT,
   DASHBOARD_TABLE_WRAP,
   DASHBOARD_TH_STICKY_SOFT,
@@ -69,16 +68,73 @@ interface Props {
   sections: { id: string; sectionCode: string; sectionName: string; divisionId: string }[]
 }
 
-function matchesOperatorSearch(query: string, name: string, employeeCode: string): boolean {
+type ReportTab = 'operators' | 'parts' | 'lines' | 'breakdown' | 'ng'
+
+function matchesOperatorSearch(query: string, ...values: (string | number | null | undefined)[]): boolean {
+  return matchesContains(query, ...values)
+}
+
+function matchesContains(query: string, ...values: (string | number | null | undefined)[]): boolean {
   const q = query.trim()
   if (!q) return true
   const ql = q.toLowerCase()
-  return (
-    name.includes(q) ||
-    employeeCode.includes(q) ||
-    name.toLowerCase().includes(ql) ||
-    employeeCode.toLowerCase().includes(ql)
-  )
+  return values.some((v) => v != null && String(v).toLowerCase().includes(ql))
+}
+
+function matchesBreakdownSearch(
+  query: string,
+  row: {
+    lineCode: string
+    categories?: { code: string; name: string }[]
+    topCategory?: { code: string; name: string } | null
+  },
+): boolean {
+  if (matchesContains(query, row.lineCode)) return true
+  if (row.topCategory && matchesContains(query, row.topCategory.code, row.topCategory.name)) return true
+  return (row.categories ?? []).some((c) => matchesContains(query, c.code, c.name))
+}
+
+function matchesNgSearch(
+  query: string,
+  row: {
+    lineCode: string
+    parts?: { partSamco: number; partName: string }[]
+    topPart?: { partSamco: number; partName: string } | null
+  },
+): boolean {
+  if (matchesContains(query, row.lineCode)) return true
+  if (row.topPart && matchesContains(query, row.topPart.partSamco, row.topPart.partName)) return true
+  return (row.parts ?? []).some((p) => matchesContains(query, p.partSamco, p.partName))
+}
+
+function reportSearchPlaceholder(tab: ReportTab, th: boolean): string {
+  switch (tab) {
+    case 'operators':
+      return th ? 'พิมพ์ชื่อ รหัสพนักงาน หรือรหัสสาย…' : 'Type name, employee code or line…'
+    case 'parts':
+      return th ? 'พิมพ์รหัส Samco, ชื่อ Part หรือส่วน…' : 'Type Samco, part name or section…'
+    case 'lines':
+      return th ? 'พิมพ์รหัสสาย เช่น PD2-1…' : 'Type line code e.g. PD2-1…'
+    case 'breakdown':
+      return th ? 'พิมพ์รหัสสายหรือหมวด Breakdown…' : 'Type line code or breakdown category…'
+    case 'ng':
+      return th ? 'พิมพ์รหัสสาย หรือรหัส/ชื่อ Part…' : 'Type line code or part…'
+  }
+}
+
+function reportSearchLabel(tab: ReportTab, th: boolean): string {
+  switch (tab) {
+    case 'operators':
+      return th ? 'ค้นหาพนักงาน' : 'Search operator'
+    case 'parts':
+      return th ? 'ค้นหา Part' : 'Search part'
+    case 'lines':
+      return th ? 'ค้นหาสายการผลิต' : 'Search line'
+    case 'breakdown':
+      return th ? 'ค้นหาสาย / หมวด' : 'Search line / category'
+    case 'ng':
+      return th ? 'ค้นหาสาย / Part' : 'Search line / part'
+  }
 }
 
 export function ReportClient({ divisions, sections }: Props) {
@@ -91,7 +147,8 @@ export function ReportClient({ divisions, sections }: Props) {
   const [divisionFilter, setDivisionFilter] = useState('all')
   const [sectionFilter, setSectionFilter] = useState('all')
   const [granularity, setGranularity] = useState<Granularity>('day')
-  const [operatorSearch, setOperatorSearch] = useState('')
+  const [reportTab, setReportTab] = useState<ReportTab>('operators')
+  const [reportSearch, setReportSearch] = useState('')
   const [bdView, setBdView] = useState<'daily' | 'monthly' | 'yearly'>('daily')
   const [heatmapYear, setHeatmapYear] = useState(() => new Date().getFullYear())
   const [heatmapLineFilter, setHeatmapLineFilter] = useState('all')
@@ -148,10 +205,6 @@ export function ReportClient({ divisions, sections }: Props) {
   const byPart = payload?.byPart ?? []
   const byLineBreakdown: ByLineBreakdownRow[] = payload?.byLineBreakdown ?? []
   const breakdownCategories: BreakdownCategoryMeta[] = payload?.breakdownCategories ?? []
-  const breakdownByLine = useMemo(
-    () => aggregateBreakdownByLine(byLineBreakdown),
-    [byLineBreakdown],
-  )
   const byLineNg: ByLineNgRow[] = payload?.byLineNg ?? []
   const byLineIdleRaw: ByLineIdleRow[] = payload?.byLineIdle ?? []
   type LineIdleSortKey = keyof ByLineIdleRow
@@ -186,19 +239,57 @@ export function ReportClient({ divisions, sections }: Props) {
 
   const filteredByOperator = useMemo(
     () =>
-      byOperator.filter((r: { name: string; employeeCode: string }) =>
-        matchesOperatorSearch(operatorSearch, r.name, r.employeeCode),
+      byOperator.filter((r: { name: string; employeeCode: string; lineCode?: string; partSamco?: number; partName?: string }) =>
+        matchesOperatorSearch(reportSearch, r.name, r.employeeCode, r.lineCode, r.partSamco, r.partName),
       ),
-    [byOperator, operatorSearch],
+    [byOperator, reportSearch],
   )
 
   const filteredOperatorMatrix = useMemo(() => {
     if (!operatorMonthMatrix) return null
-    const rows = operatorMonthMatrix.rows.filter((r: { name: string; employeeCode: string }) =>
-      matchesOperatorSearch(operatorSearch, r.name, r.employeeCode),
+    const rows = operatorMonthMatrix.rows.filter((r: OperatorMatrixRow) =>
+      matchesOperatorSearch(reportSearch, r.name, r.employeeCode) ||
+      r.cells.some((c) =>
+        c.parts.some((p) => matchesOperatorSearch(reportSearch, p.lineCode, p.partSamco, p.partName)),
+      ),
     )
     return { ...operatorMonthMatrix, rows }
-  }, [operatorMonthMatrix, operatorSearch])
+  }, [operatorMonthMatrix, reportSearch])
+
+  const filteredByPart = useMemo(
+    () =>
+      byPart.filter((r: ByPartRow) =>
+        matchesContains(reportSearch, r.partSamco, r.partName) ||
+        (r.lines ?? []).some((l) =>
+          matchesContains(reportSearch, l.lineCode, l.sectionCode, l.sectionName),
+        ),
+      ),
+    [byPart, reportSearch],
+  )
+
+  const filteredByLineIdle = useMemo(
+    () => byLineIdle.filter((r) => matchesContains(reportSearch, r.lineCode)),
+    [byLineIdle, reportSearch],
+  )
+
+  const filteredByLineBreakdown = useMemo(
+    () => byLineBreakdown.filter((r) => matchesBreakdownSearch(reportSearch, r)),
+    [byLineBreakdown, reportSearch],
+  )
+  const filteredBreakdownByLine = useMemo(
+    () => aggregateBreakdownByLine(filteredByLineBreakdown),
+    [filteredByLineBreakdown],
+  )
+
+  const filteredHeatmapRows = useMemo(
+    () => heatmapRows.filter((r) => matchesBreakdownSearch(reportSearch, r)),
+    [heatmapRows, reportSearch],
+  )
+
+  const filteredByLineNg = useMemo(
+    () => byLineNg.filter((r) => matchesNgSearch(reportSearch, r)),
+    [byLineNg, reportSearch],
+  )
 
   const operatorDailyEmptyMessage = useMemo(() => {
     if (byOperator.length === 0) return th ? 'ไม่มีข้อมูลพนักงานในช่วงนี้' : 'No operator data'
@@ -215,6 +306,27 @@ export function ReportClient({ divisions, sections }: Props) {
     }
     return ''
   }, [operatorMonthMatrix, filteredOperatorMatrix, th])
+
+  const partEmptyMessage =
+    byPart.length === 0
+      ? (th ? 'ไม่มีข้อมูล Part ในช่วงนี้' : 'No part data')
+      : filteredByPart.length === 0
+        ? (th ? 'ไม่พบ Part ตามคำค้นหา' : 'No parts match your search')
+        : ''
+
+  const lineEmptyMessage =
+    byLineIdle.length === 0
+      ? (th ? 'ไม่มีข้อมูลไลน์ในช่วงที่เลือก' : 'No line data in selected period')
+      : filteredByLineIdle.length === 0
+        ? (th ? 'ไม่พบสายการผลิตตามคำค้นหา' : 'No lines match your search')
+        : ''
+
+  const breakdownEmptyMessage =
+    byLineBreakdown.length === 0
+      ? (th ? 'ไม่มีข้อมูล Breakdown ในช่วงนี้' : 'No breakdown data in selected period')
+      : filteredByLineBreakdown.length === 0
+        ? (th ? 'ไม่พบ Breakdown ตามคำค้นหา' : 'No breakdown data match your search')
+        : ''
 
   const periodLabel = granularity === 'month' ? (th ? 'เดือน' : 'Month') : th ? 'วันที่' : 'Date'
 
@@ -241,32 +353,140 @@ export function ReportClient({ divisions, sections }: Props) {
 
     // Sheet 1: Operators
     if (granularity === 'month' && filteredOperatorMatrix) {
-      const dayCols = Array.from({ length: filteredOperatorMatrix.daysInMonth }, (_, i) => i + 1)
-      const header = [th ? 'รหัสพนักงาน' : 'Employee Code', th ? 'ชื่อพนักงาน' : 'Operator', ...dayCols.map(String)]
-      const rows = filteredOperatorMatrix.rows.map((row: any) => [
-        row.employeeCode,
-        row.name,
-        ...row.cells.map((c: any) =>
-          c.parts.length
-            ? c.parts.map((p: any) => `${p.partSamco} (${p.okQty.toLocaleString()} ${th ? 'ชิ้น' : 'pcs'})`).join('\n')
-            : '',
-        ),
-      ])
+      const noneLabel = th ? 'ไม่มี' : 'None'
+      const header = [
+        th ? 'วันที่' : 'Date',
+        th ? 'รหัส' : 'Code',
+        th ? 'ชื่อพนักงาน' : 'Operator',
+        th ? 'สายการผลิต' : 'Line',
+        'Part',
+        th ? 'ชม.ทำงาน' : 'Work hours',
+      ]
+      const rows: (string | number)[][] = []
+      const monthKey = filteredOperatorMatrix.monthKey
+      for (const row of filteredOperatorMatrix.rows) {
+        for (let d = 1; d <= filteredOperatorMatrix.daysInMonth; d++) {
+          const dateStr = `${monthKey}-${String(d).padStart(2, '0')}`
+          const parts = row.cells[d - 1]?.parts ?? []
+          if (parts.length === 0) {
+            rows.push([dateStr, row.employeeCode, row.name, '', '', noneLabel])
+            continue
+          }
+          for (const p of parts) {
+            rows.push([
+              dateStr,
+              row.employeeCode,
+              row.name,
+              p.lineCode,
+              `${p.partSamco} - ${p.partName}`,
+              p.workHours,
+            ])
+          }
+        }
+      }
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
       XLSX.utils.book_append_sheet(wb, ws, 'Operators')
     } else {
-      const header = [th ? 'ชื่อพนักงาน' : 'Operator', th ? 'รหัส' : 'Code', 'Part', periodLabel, th ? 'OK' : 'OK Qty']
-      const rows = filteredByOperator.map((r: any) => [r.name, r.employeeCode, `${r.partSamco} - ${r.partName}`, r.period, r.okQty])
+      const header = [
+        th ? 'รหัส' : 'Code',
+        th ? 'ชื่อพนักงาน' : 'Operator',
+        th ? 'สายการผลิต' : 'Line',
+        'Part',
+        th ? 'ชม.ทำงาน' : 'Work hours',
+      ]
+      const rows = filteredByOperator.map((r: any) => [
+        r.employeeCode,
+        r.name,
+        r.lineCode,
+        `${r.partSamco} - ${r.partName}`,
+        r.workHours,
+      ])
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
       XLSX.utils.book_append_sheet(wb, ws, 'Operators')
     }
 
     // Sheet 2: Parts
     {
-      const header = [th ? 'Part Samco' : 'Part Samco', th ? 'ชื่อ Part' : 'Part Name', periodLabel, th ? 'OK' : 'OK Qty']
-      const rows = byPart.map((r: any) => [r.partSamco, r.partName, r.period, r.okQty])
+      const header = [
+        th ? 'Part Samco' : 'Part Samco',
+        th ? 'ชื่อ Part' : 'Part Name',
+        periodLabel,
+        th ? 'OK' : 'OK Qty',
+        th ? 'Defect' : 'Defect',
+        'Defect Rate%',
+        th ? 'ชม. BD' : 'BD hours',
+        th ? 'จำนวนไลน์' : '# Lines',
+      ]
+      const rows = filteredByPart.map((r: ByPartRow) => {
+        const ngQty = r.ngQty ?? 0
+        const ngRate = typeof r.ngRate === 'number'
+          ? r.ngRate
+          : (r.okQty + ngQty) > 0
+            ? ngQty / (r.okQty + ngQty)
+            : 0
+        return [
+          r.partSamco,
+          r.partName,
+          r.period,
+          r.okQty,
+          ngQty,
+          Number((ngRate * 100).toFixed(2)),
+          Number(((r.bdMin ?? 0) / 60).toFixed(2)),
+          r.lineCount ?? r.lines?.length ?? 0,
+        ]
+      })
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
       XLSX.utils.book_append_sheet(wb, ws, 'Parts')
+    }
+
+    // Sheet 2b: Parts by line
+    {
+      const header = [
+        th ? 'Part Samco' : 'Part Samco',
+        th ? 'ชื่อ Part' : 'Part Name',
+        periodLabel,
+        th ? 'ส่วน' : 'Section',
+        th ? 'ไลน์' : 'Line',
+        th ? 'OK (ชิ้น)' : 'OK qty',
+        th ? 'สัดส่วน%' : 'Share%',
+        th ? 'Defect (ชิ้น)' : 'Defect qty',
+        th ? 'ชม. BD' : 'BD hours',
+      ]
+      const rows: (string | number)[][] = []
+      for (const r of filteredByPart as ByPartRow[]) {
+        const lines = r.lines ?? []
+        const totalOk = r.okQty
+        if (lines.length === 0) {
+          rows.push([
+            r.partSamco,
+            r.partName,
+            r.period,
+            '',
+            '',
+            r.okQty,
+            100,
+            r.ngQty ?? 0,
+            Number(((r.bdMin ?? 0) / 60).toFixed(2)),
+          ])
+          continue
+        }
+        for (const l of lines) {
+          const share = totalOk > 0 ? Number(((l.okQty / totalOk) * 100).toFixed(1)) : 0
+          rows.push([
+            r.partSamco,
+            r.partName,
+            r.period,
+            formatPartSection(l),
+            l.lineCode,
+            l.okQty,
+            share,
+            l.ngQty ?? 0,
+            Number(((l.bdMin ?? 0) / 60).toFixed(2)),
+          ])
+        }
+      }
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+      XLSX.utils.book_append_sheet(wb, ws, th ? 'Part ตามไลน์' : 'Parts by Line')
     }
 
     // Sheet 3: Lines — Idle Hours
@@ -283,7 +503,7 @@ export function ReportClient({ divisions, sections }: Props) {
         th ? 'ชม.ว่าง (ไม่บันทึก)' : 'Unrecorded (hr)',
         th ? '% เดินเครื่อง' : 'Running %',
       ]
-      const rows = byLineIdle.map((r) => [
+      const rows = filteredByLineIdle.map((r) => [
         r.lineCode,
         r.sessionDays,
         r.noSessionDays,
@@ -310,7 +530,7 @@ export function ReportClient({ divisions, sections }: Props) {
         th ? 'เวลาหยุดรวม %' : 'Downtime %',
         ...catCodes,
       ]
-      const rows = breakdownByLine.map((r) => {
+      const rows = filteredBreakdownByLine.map((r) => {
         const workHr = r.workHours
         const downHr = r.bdMin / 60
         const runningHr = Math.max(0, workHr - downHr)
@@ -341,7 +561,7 @@ export function ReportClient({ divisions, sections }: Props) {
         th ? 'จำนวน Part' : '# Parts',
         th ? 'Part หลัก' : 'Top Part',
       ]
-      const rows = byLineNg.map((r) => [
+      const rows = filteredByLineNg.map((r) => [
         r.lineCode,
         r.period,
         r.ngQty,
@@ -365,7 +585,7 @@ export function ReportClient({ divisions, sections }: Props) {
         th ? 'OK (ชิ้น)' : 'OK qty',
       ]
       const rows: (string | number)[][] = []
-      for (const r of byLineNg) {
+      for (const r of filteredByLineNg) {
         for (const p of r.parts ?? []) {
           rows.push([r.lineCode, r.period, p.partSamco, p.partName, p.ngQty, p.okQty ?? 0])
         }
@@ -391,6 +611,11 @@ export function ReportClient({ divisions, sections }: Props) {
         </p>
       </div>
 
+      <Tabs
+        value={reportTab}
+        onValueChange={(v) => setReportTab(v as ReportTab)}
+        className="w-full space-y-4"
+      >
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-end gap-3">
           {granularity === 'month' ? (
@@ -506,6 +731,26 @@ export function ReportClient({ divisions, sections }: Props) {
             </div>
           </div>
 
+          <div className="min-w-[14rem] flex-1 sm:max-w-sm">
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {reportSearchLabel(reportTab, th)}
+            </label>
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={reportSearch}
+                onChange={(e) => setReportSearch(e.target.value)}
+                placeholder={reportSearchPlaceholder(reportTab, th)}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 shadow-sm outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={() => void exportExcel()}
@@ -515,6 +760,46 @@ export function ReportClient({ divisions, sections }: Props) {
             <Download size={16} />
             Export Excel
           </button>
+        </div>
+
+        <div className="mt-4 overflow-x-auto border-t border-slate-100 pt-3">
+          <TabsList className="inline-flex h-auto min-w-full w-max gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 text-slate-500 sm:min-w-0 sm:w-full sm:justify-start">
+            <TabsTrigger
+              value="operators"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-blue-600 hover:bg-white/70 hover:text-blue-700 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Users className="h-4 w-4 shrink-0" aria-hidden />
+              {th ? 'พนักงาน' : 'Operators'}
+            </TabsTrigger>
+            <TabsTrigger
+              value="parts"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-emerald-600 hover:bg-white/70 hover:text-emerald-700 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Package className="h-4 w-4 shrink-0" aria-hidden />
+              Part
+            </TabsTrigger>
+            <TabsTrigger
+              value="lines"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-amber-600 hover:bg-white/70 hover:text-amber-700 data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Cog className="h-4 w-4 shrink-0" aria-hidden />
+              {th ? 'ไลน์การผลิต' : 'Lines'}
+            </TabsTrigger>
+            <TabsTrigger
+              value="breakdown"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-orange-600 hover:bg-white/70 hover:text-orange-700 data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <Wrench className="h-4 w-4 shrink-0" aria-hidden />
+              {th ? 'วิเคราะห์ Breakdown' : 'Breakdown analysis'}
+            </TabsTrigger>
+            <TabsTrigger
+              value="ng"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-red-600 hover:bg-white/70 hover:text-red-700 data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+            >
+              <XCircle className="h-4 w-4 shrink-0" aria-hidden />
+              Defect
+            </TabsTrigger>
+          </TabsList>
         </div>
       </div>
 
@@ -550,89 +835,29 @@ export function ReportClient({ divisions, sections }: Props) {
           <Loader2 size={32} className="animate-spin text-blue-600" />
         </div>
       ) : (
-        <Tabs defaultValue="operators" className="w-full">
-          <div className="overflow-x-auto pb-1">
-            <TabsList className="inline-flex h-auto min-w-full w-max gap-2 rounded-2xl border border-slate-200 bg-slate-100/80 p-1.5 text-slate-600 shadow-sm sm:min-w-0 sm:w-full sm:justify-start">
-              <TabsTrigger
-                value="operators"
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-              >
-                <Users className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-                {th ? 'พนักงาน' : 'Operators'}
-              </TabsTrigger>
-              <TabsTrigger
-                value="parts"
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-              >
-                <Package className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-                Part
-              </TabsTrigger>
-              <TabsTrigger
-                value="lines"
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-              >
-                <Cog className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-                {th ? 'ไลน์การผลิต' : 'Lines'}
-              </TabsTrigger>
-              <TabsTrigger
-                value="breakdown"
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-              >
-                <Wrench className="h-4 w-4 shrink-0 text-orange-600" aria-hidden />
-                {th ? 'วิเคราะห์ Breakdown' : 'Breakdown analysis'}
-              </TabsTrigger>
-              <TabsTrigger
-                value="ng"
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-              >
-                <XCircle className="h-4 w-4 shrink-0 text-red-600" aria-hidden />
-                Defect
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
+        <>
           <TabsContent value="operators" className="mt-4">
             <ReportSection
               icon={<Users className="text-blue-600" size={20} />}
               title={
-                granularity === 'month'
-                  ? th
-                    ? `พนักงาน — รายเดือน ${operatorMonthMatrix?.monthKey ?? dateFrom.slice(0, 7)}`
-                    : `Operators — ${operatorMonthMatrix?.monthKey ?? dateFrom.slice(0, 7)}`
-                  : th
-                    ? 'พนักงาน — ผลิตรุ่นใด จำนวนเท่าใด (รายวัน)'
-                    : 'Operators — part & OK qty (daily)'
+                th
+                  ? granularity === 'month'
+                    ? `พนักงาน — ผลิตรุ่นใด กี่ชม. ที่สายใด (${operatorMonthMatrix?.monthKey ?? dateFrom.slice(0, 7)})`
+                    : 'พนักงาน — ผลิตรุ่นใด กี่ชม. ที่สายใด (รายวัน)'
+                  : granularity === 'month'
+                    ? `Operators — part, hours & line (${operatorMonthMatrix?.monthKey ?? dateFrom.slice(0, 7)})`
+                    : 'Operators — part, hours & line (daily)'
               }
               subtitle={
                 granularity === 'month'
                   ? th
-                    ? 'แต่ละช่อง = เลข Samco และจำนวน OK ที่บันทึกในวันนั้น (หลาย Part ในวันเดียวกันแสดงซ้อนลงมา)'
-                    : 'Each cell: Part Samco # and OK qty that day (multiple parts stack).'
+                    ? 'แถวสรุป = พนักงาน 1 คน · กดลูกศรเพื่อดูรายวันทั้งเดือน · วันไม่มีงานแสดงว่าไม่มี'
+                    : 'Summary row = one operator · expand for every day of the month · days with no work show None'
                   : undefined
               }
             >
-              <div className="mb-3 px-2">
-                <label className="mb-1 block text-xs font-medium text-slate-500">
-                  {th ? 'ค้นหาพนักงาน (ชื่อ / รหัส)' : 'Search operator (name / code)'}
-                </label>
-                <div className="relative max-w-md">
-                  <Search
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                    aria-hidden
-                  />
-                  <input
-                    type="search"
-                    value={operatorSearch}
-                    onChange={(e) => setOperatorSearch(e.target.value)}
-                    placeholder={th ? 'พิมพ์ชื่อหรือรหัสพนักงาน…' : 'Type name or employee code…'}
-                    className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-400"
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-
               {granularity === 'month' && filteredOperatorMatrix ? (
-                <OperatorMonthMatrixTable
+                <OperatorMonthExpandTable
                   matrix={filteredOperatorMatrix}
                   th={th}
                   emptyMessage={operatorMatrixEmptyMessage}
@@ -641,19 +866,26 @@ export function ReportClient({ divisions, sections }: Props) {
                 <SimpleTable
                   empty={operatorDailyEmptyMessage}
                   cols={[
-                    th ? 'พนักงาน' : 'Name',
                     th ? 'รหัส' : 'Code',
+                    th ? 'พนักงาน' : 'Name',
+                    th ? 'สายการผลิต' : 'Line',
                     th ? 'Part' : 'Part',
-                    periodLabel,
-                    th ? 'OK (ชิ้น)' : 'OK qty',
+                    th ? 'ชม.ทำงาน' : 'Work hours',
                   ]}
                   rows={filteredByOperator.map(
-                    (r: { name: string; employeeCode: string; partSamco: number; partName: string; period: string; okQty: number }) => [
-                      r.name,
+                    (r: {
+                      name: string
+                      employeeCode: string
+                      partSamco: number
+                      partName: string
+                      lineCode: string
+                      workHours: number
+                    }) => [
                       r.employeeCode,
+                      r.name,
+                      r.lineCode,
                       `${r.partSamco} — ${r.partName}`,
-                      r.period,
-                      r.okQty.toLocaleString(),
+                      r.workHours.toLocaleString(),
                     ],
                   )}
                 />
@@ -665,17 +897,13 @@ export function ReportClient({ divisions, sections }: Props) {
             <ReportSection
               icon={<Package className="text-emerald-600" size={20} />}
               title={th ? 'Part — ผลิตในแต่ละช่วง จำนวนเท่าใด' : 'Parts — OK qty by period'}
+              subtitle={
+                th
+                  ? 'แถวสรุป = รวมทุกสาย · กดลูกศรเพื่อดู OK ต่อสายการผลิต'
+                  : 'Summary row = all lines · expand to see OK qty by production line'
+              }
             >
-              <SimpleTable
-                empty={th ? 'ไม่มีข้อมูล Part ในช่วงนี้' : 'No part data'}
-                cols={[th ? 'Part (Samco)' : 'Samco', th ? 'ชื่อ' : 'Name', periodLabel, th ? 'OK (ชิ้น)' : 'OK qty']}
-                rows={byPart.map((r: { partSamco: number; partName: string; period: string; okQty: number }) => [
-                  String(r.partSamco),
-                  r.partName,
-                  r.period,
-                  r.okQty.toLocaleString(),
-                ])}
-              />
+              <PartByLineTable rows={filteredByPart} empty={partEmptyMessage} th={th} />
             </ReportSection>
           </TabsContent>
 
@@ -690,7 +918,7 @@ export function ReportClient({ divisions, sections }: Props) {
                   : 'Working days only (excl. Sundays & public holidays); normal hours only (excl. OT). Running = Recorded − Downtime; Unrecorded = Planned − Recorded.'
               }
             >
-              <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+              <div className={cn(DASHBOARD_TABLE_WRAP)}>
                 <table className={DASHBOARD_TABLE_REPORT}>
                   <thead className={DASHBOARD_THEAD_STICKY}>
                     <tr>
@@ -728,14 +956,14 @@ export function ReportClient({ divisions, sections }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {byLineIdle.length === 0 ? (
+                    {filteredByLineIdle.length === 0 ? (
                       <tr>
                         <td colSpan={10} className="border border-slate-100 px-3 py-12 text-center text-sm font-medium text-slate-600">
-                          {th ? 'ไม่มีข้อมูลไลน์ในช่วงที่เลือก' : 'No line data in selected period'}
+                          {lineEmptyMessage}
                         </td>
                       </tr>
                     ) : (
-                      byLineIdle.map((r) => {
+                      filteredByLineIdle.map((r) => {
                         const pct = r.utilizationPct
                         const sessionPct = r.sessionDayPct
                         const sessionPctColor =
@@ -816,17 +1044,17 @@ export function ReportClient({ divisions, sections }: Props) {
             >
               {(bdView === 'daily' || bdView === 'monthly') ? (
                 <>
-                  <BreakdownSummaryCards rows={byLineBreakdown} th={th} />
+                  <BreakdownSummaryCards rows={filteredByLineBreakdown} th={th} />
                   <BreakdownByLinePivotTable
-                    rows={breakdownByLine}
+                    rows={filteredBreakdownByLine}
                     categories={breakdownCategories}
-                    empty={th ? 'ไม่มีข้อมูล Breakdown ในช่วงนี้' : 'No breakdown data in selected period'}
+                    empty={breakdownEmptyMessage}
                     th={th}
                   />
                 </>
               ) : (
                 <BreakdownYearlyView
-                  rows={heatmapRows}
+                  rows={filteredHeatmapRows}
                   year={heatmapYear}
                   setYear={setHeatmapYear}
                   lineFilter={heatmapLineFilter}
@@ -849,12 +1077,13 @@ export function ReportClient({ divisions, sections }: Props) {
                   : 'Defect entries recorded in the selected period, grouped by line.'
               }
             >
-              <NgSummaryCards rows={byLineNg} th={th} />
-              <NgDefectLineTable rows={byLineNg} periodLabel={periodLabel} th={th} />
+              <NgSummaryCards rows={filteredByLineNg} th={th} />
+              <NgDefectLineTable rows={filteredByLineNg} periodLabel={periodLabel} th={th} />
             </ReportSection>
           </TabsContent>
-        </Tabs>
+        </>
       )}
+      </Tabs>
     </div>
   )
 }
@@ -862,6 +1091,29 @@ export function ReportClient({ divisions, sections }: Props) {
 type BdCategoryRow = { categoryId: string; code: string; name: string; count: number; bdMin: number }
 type NgCategoryRow = { categoryId: string; code: string; name: string; ngQty: number }
 type NgPartRow = { partId: string; partSamco: number; partName: string; ngQty: number; okQty: number }
+type PartLineRow = {
+  lineId: string
+  lineCode: string
+  sectionCode?: string
+  sectionName?: string
+  okQty: number
+  ngQty?: number
+  bdMin?: number
+}
+type ByPartRow = {
+  partId: string
+  partSamco: number
+  partName: string
+  period: string
+  okQty: number
+  ngQty?: number
+  ngRate?: number
+  bdMin?: number
+  lineCount?: number
+  topLine?: PartLineRow | null
+  lines?: PartLineRow[]
+}
+type PartSortKey = 'partSamco' | 'partName' | 'okQty' | 'ngQty' | 'ngRate' | 'bdMin' | 'lineCount'
 type BreakdownCategoryMeta = { id: string; code: string; name: string }
 
 type ByLineBreakdownRow = {
@@ -972,7 +1224,7 @@ function BreakdownByLinePivotTable({
 
   if (rows.length === 0) {
     return (
-      <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+      <div className={cn(DASHBOARD_TABLE_WRAP)}>
         <table className={DASHBOARD_TABLE_REPORT}>
           <tbody>
             <tr>
@@ -989,7 +1241,7 @@ function BreakdownByLinePivotTable({
   const labelRowSpan = catCount > 0 ? 2 : 1
 
   return (
-    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+    <div className={cn(DASHBOARD_TABLE_WRAP)}>
       <table className={DASHBOARD_TABLE_REPORT}>
         <thead className={DASHBOARD_THEAD_STICKY}>
           <tr>
@@ -1435,6 +1687,268 @@ function NgSummaryCards({ rows, th }: { rows: ByLineNgRow[]; th: boolean }) {
   )
 }
 
+function formatPartSection(l: PartLineRow): string {
+  const code = (l.sectionCode ?? '').trim()
+  const name = (l.sectionName ?? '').trim()
+  if (code && name) return `${code} — ${name}`
+  return code || name || ''
+}
+
+function PartLineDetailMiniTable({
+  lines,
+  totalOk,
+  th,
+}: {
+  lines: PartLineRow[]
+  totalOk: number
+  th: boolean
+}) {
+  if (lines.length === 0) return null
+  return (
+    <div className="overflow-x-auto rounded-lg border border-emerald-100 bg-emerald-50/30">
+      <table className="min-w-full text-sm">
+        <thead className="bg-emerald-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-emerald-700">#</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-emerald-700">
+              {th ? 'ส่วน' : 'Section'}
+            </th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-emerald-700">
+              {th ? 'สายการผลิต' : 'Line'}
+            </th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700">
+              {th ? 'OK (ชิ้น)' : 'OK qty'}
+            </th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700">
+              {th ? 'สัดส่วน' : 'Share'}
+            </th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700">
+              {th ? 'Defect (ชิ้น)' : 'Defect qty'}
+            </th>
+            <th className="px-3 py-2 text-right text-xs font-semibold text-emerald-700">
+              {th ? 'ชม. BD' : 'BD hours'}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, i) => {
+            const share = totalOk > 0 ? (l.okQty / totalOk) * 100 : 0
+            const ng = l.ngQty ?? 0
+            const section = formatPartSection(l)
+            return (
+              <tr key={l.lineId} className={i % 2 === 0 ? 'bg-white' : 'bg-emerald-50/40'}>
+                <td className="px-3 py-2 text-xs font-medium text-slate-400">{i + 1}</td>
+                <td className="px-3 py-2 text-slate-700">{section || '—'}</td>
+                <td className="px-3 py-2 font-medium text-slate-800">{l.lineCode}</td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-700">{l.okQty.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right text-slate-600">{share.toFixed(1)}%</td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-700">{ng.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-700">
+                  {formatBdHours((l.bdMin ?? 0) / 60)}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function partNgQty(r: ByPartRow): number {
+  return r.ngQty ?? 0
+}
+
+function partNgRate(r: ByPartRow): number {
+  if (typeof r.ngRate === 'number') return r.ngRate
+  const ng = partNgQty(r)
+  const total = r.okQty + ng
+  return total > 0 ? ng / total : 0
+}
+
+function partLineCount(r: ByPartRow): number {
+  return r.lineCount ?? r.lines?.length ?? 0
+}
+
+function partBdMin(r: ByPartRow): number {
+  return r.bdMin ?? 0
+}
+
+function PartByLineTable({
+  rows,
+  empty,
+  th,
+}: {
+  rows: ByPartRow[]
+  empty: string
+  th: boolean
+}) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<PartSortKey>('partSamco')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const colCount = 8
+
+  const toggleSort = (key: PartSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'partSamco' || key === 'partName' ? 'asc' : 'desc')
+    }
+  }
+
+  const sortedRows = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...rows].sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'partSamco':
+          cmp = a.partSamco - b.partSamco
+          break
+        case 'partName':
+          cmp = a.partName.localeCompare(b.partName, 'th', { sensitivity: 'base' })
+          break
+        case 'okQty':
+          cmp = a.okQty - b.okQty
+          break
+        case 'ngQty':
+          cmp = partNgQty(a) - partNgQty(b)
+          break
+        case 'ngRate':
+          cmp = partNgRate(a) - partNgRate(b)
+          break
+        case 'bdMin':
+          cmp = partBdMin(a) - partBdMin(b)
+          break
+        case 'lineCount':
+          cmp = partLineCount(a) - partLineCount(b)
+          break
+      }
+      if (cmp !== 0) return dir * cmp
+      return a.partSamco - b.partSamco || a.period.localeCompare(b.period)
+    })
+  }, [rows, sortKey, sortDir])
+
+  const sortIcon = (key: PartSortKey) => {
+    if (sortKey === key) {
+      return sortDir === 'asc'
+        ? <ArrowUp size={13} className="text-blue-600 shrink-0" />
+        : <ArrowDown size={13} className="text-blue-600 shrink-0" />
+    }
+    return <ArrowUpDown size={13} className="text-slate-400 shrink-0" />
+  }
+
+  const sortTh = (key: PartSortKey, label: string, align: 'left' | 'right' | 'center' = 'left') => (
+    <th className={DASHBOARD_TH_STICKY_SOFT}>
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={cn(
+          'inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-slate-200/70',
+          align === 'right' && 'ml-auto',
+          align === 'center' && 'mx-auto',
+        )}
+      >
+        <span>{label}</span>
+        {sortIcon(key)}
+      </button>
+    </th>
+  )
+
+  return (
+    <div className={cn(DASHBOARD_TABLE_WRAP)}>
+      <table className={DASHBOARD_TABLE_REPORT}>
+        <thead className={DASHBOARD_THEAD_STICKY}>
+          <tr>
+            <th className={DASHBOARD_TH_STICKY_SOFT} />
+            {sortTh('partSamco', th ? 'Part (Samco)' : 'Samco')}
+            {sortTh('partName', th ? 'ชื่อ' : 'Name')}
+            {sortTh('okQty', th ? 'OK (ชิ้น)' : 'OK qty', 'right')}
+            {sortTh('ngQty', th ? 'Defect (ชิ้น)' : 'Defect qty', 'right')}
+            {sortTh('ngRate', 'Defect Rate%', 'center')}
+            {sortTh('bdMin', th ? 'ชม. BD' : 'BD hours', 'right')}
+            {sortTh('lineCount', th ? 'จำนวนไลน์' : '# Lines', 'center')}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.length === 0 ? (
+            <tr>
+              <td
+                colSpan={colCount}
+                className="border border-slate-100 px-3 py-12 text-center text-sm font-medium text-slate-600"
+              >
+                {empty}
+              </td>
+            </tr>
+          ) : (
+            sortedRows.map((r) => {
+              const rowKey = `${r.partId}|${r.period}`
+              const isExpanded = expandedKey === rowKey
+              const lines = r.lines ?? []
+              const canExpand = lines.length > 0
+              const lineCount = partLineCount(r)
+              const ngQty = partNgQty(r)
+              const ngRate = partNgRate(r)
+              const bdHours = partBdMin(r) / 60
+              return (
+                <Fragment key={rowKey}>
+                  <tr className="hover:bg-slate-50/80">
+                    <td className="border border-slate-100 px-2 py-2 text-center">
+                      {canExpand ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedKey(isExpanded ? null : rowKey)}
+                          className="inline-flex rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                          aria-label={isExpanded ? (th ? 'ย่อรายละเอียด' : 'Collapse') : (th ? 'ขยายรายละเอียดสาย' : 'Expand lines')}
+                        >
+                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
+                      ) : (
+                        <span className="inline-block w-6" />
+                      )}
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 font-mono text-slate-700">{r.partSamco}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">{r.partName}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-right font-semibold text-slate-700">
+                      {r.okQty.toLocaleString()}
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-right font-semibold text-slate-700">
+                      {ngQty.toLocaleString()}
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-center">
+                      <span
+                        className={`rounded px-2 py-0.5 font-bold ${ngRate >= 0.05 ? 'bg-red-100 text-red-700' : ngRate >= 0.02 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}
+                      >
+                        {(ngRate * 100).toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-right font-semibold text-slate-700">
+                      {formatBdHours(bdHours)}
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 text-center font-semibold text-slate-700">
+                      {lineCount}
+                    </td>
+                  </tr>
+                  {isExpanded && canExpand && (
+                    <tr>
+                      <td colSpan={colCount} className="border border-slate-100 bg-slate-50/50 px-4 py-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {th ? 'OK / Defect / ชม. BD ตามสายการผลิต' : 'OK / Defect / BD hours by production line'}
+                        </p>
+                        <PartLineDetailMiniTable lines={lines} totalOk={r.okQty} th={th} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function NgPartDetailMiniTable({ parts, th }: { parts: NgPartRow[]; th: boolean }) {
   if (parts.length === 0) return null
   return (
@@ -1492,7 +2006,7 @@ function NgDefectLineTable({
   }
 
   return (
-    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+    <div className={cn(DASHBOARD_TABLE_WRAP)}>
       <table className={DASHBOARD_TABLE_REPORT}>
         <thead className={DASHBOARD_THEAD_STICKY}>
           <tr>
@@ -1599,6 +2113,7 @@ type YearlyMonthEntry = {
   label: string
   bdCount: number
   bdMin: number
+  bdHours: number
   topCatLabel: string
 }
 
@@ -1806,12 +2321,14 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
       const topCat = agg
         ? Array.from(agg.catMap.values()).sort((a, b) => b.bdMin - a.bdMin)[0] ?? null
         : null
+      const bdMin = agg?.bdMin ?? 0
       return {
         monthKey: mk,
         monthNum: i + 1,
         label: MONTHS[i],
         bdCount: agg?.bdCount ?? 0,
-        bdMin: agg?.bdMin ?? 0,
+        bdMin,
+        bdHours: bdMin / 60,
         topCatLabel: topCat ? `${topCat.code} — ${topCat.name}` : '',
       }
     })
@@ -1856,25 +2373,32 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
     return { lineRows, colTotals, grandTotal, maxCell }
   }, [rows, lineFilter, metric])
 
-  const dataKey = metric === 'count' ? 'bdCount' : 'bdMin'
+  const dataKey = metric === 'count' ? 'bdCount' : 'bdHours'
   const yLabel = metric === 'count'
     ? (th ? 'ครั้ง' : 'Events')
-    : (th ? 'นาที' : 'Min')
+    : (th ? 'ชม.' : 'hr')
+  const asHours = metric !== 'count'
+
+  function formatPivotCell(v: number): string {
+    if (v <= 0) return '—'
+    return asHours ? formatBdHours(v / 60) : v.toLocaleString()
+  }
 
   function customTooltip({ active, payload }: { active?: boolean; payload?: { payload: YearlyMonthEntry }[] }) {
     if (!active || !payload?.length) return null
     const d = payload[0].payload
+    const avgHr = d.bdCount > 0 ? d.bdHours / d.bdCount : 0
     return (
       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-md text-xs">
         <p className="mb-1 font-semibold text-slate-700">{d.label} {year}</p>
         <p className="text-orange-600">
           {d.bdCount.toLocaleString()} {th ? 'ครั้ง' : 'events'}
           {' · '}
-          {d.bdMin.toLocaleString()} {th ? 'นาที' : 'min'}
+          {formatBdHours(d.bdHours)} {th ? 'ชม.' : 'hr'}
         </p>
         {d.bdCount > 0 && (
           <p className="text-slate-500">
-            {th ? 'เฉลี่ย' : 'Avg'}: {Math.round(d.bdMin / d.bdCount).toLocaleString()} {th ? 'นาที/ครั้ง' : 'min/event'}
+            {th ? 'เฉลี่ย' : 'Avg'}: {formatBdHours(avgHr)} {th ? 'ชม./ครั้ง' : 'hr/event'}
           </p>
         )}
         {d.topCatLabel && (
@@ -1923,7 +2447,7 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
                 metric === 'min' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
-              {th ? 'เวลารวม (นาที)' : 'Downtime (min)'}
+              {th ? 'เวลารวม (ชม.)' : 'Downtime (hr)'}
             </button>
             <button
               type="button"
@@ -1989,7 +2513,13 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
                     axisLine={false}
                     tickLine={false}
                     width={40}
-                    tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                    tickFormatter={(v: number) =>
+                      v >= 1000
+                        ? `${(v / 1000).toFixed(1)}k`
+                        : metric === 'count'
+                          ? String(v)
+                          : v.toFixed(1)
+                    }
                   />
                   <RechartsTooltip
                     content={({ active, payload }) =>
@@ -2047,12 +2577,12 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
                           className={`px-3 py-2 text-center text-xs ${
                             isMax ? 'font-bold text-orange-700 bg-orange-50' : v > 0 ? 'text-slate-700' : 'text-slate-300'
                           }`}>
-                          {v > 0 ? v.toLocaleString() : '—'}
+                          {formatPivotCell(v)}
                         </td>
                       )
                     })}
                     <td className="px-4 py-2 text-right text-xs font-semibold text-orange-700">
-                      {lr.total > 0 ? lr.total.toLocaleString() : '—'}
+                      {formatPivotCell(lr.total)}
                     </td>
                   </tr>
                 ))}
@@ -2065,11 +2595,11 @@ function BreakdownYearlyView({ rows, year, setYear, lineFilter, setLineFilter, a
                     </td>
                     {pivot.colTotals.map((v, mi) => (
                       <td key={mi} className={`px-3 py-2.5 text-center text-xs font-bold ${v > 0 ? 'text-orange-700' : 'text-slate-300'}`}>
-                        {v > 0 ? v.toLocaleString() : '—'}
+                        {formatPivotCell(v)}
                       </td>
                     ))}
                     <td className="px-4 py-2.5 text-right text-xs font-bold text-orange-700">
-                      {pivot.grandTotal > 0 ? pivot.grandTotal.toLocaleString() : '—'}
+                      {formatPivotCell(pivot.grandTotal)}
                     </td>
                   </tr>
                 </tfoot>
@@ -2262,7 +2792,7 @@ function BreakdownHeatmap({
                   metric === 'min' ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                {th ? 'นาที' : 'Minutes'}
+                {th ? 'ชม.' : 'Hours'}
               </button>
             </div>
           </div>
@@ -2350,8 +2880,8 @@ function BreakdownHeatmap({
           {maxValue > 0 && (
             <span className="ml-2 text-xs text-slate-400">
               {th
-                ? `สูงสุด: ${maxValue.toLocaleString()} ${metric === 'count' ? 'ครั้ง' : 'นาที'}`
-                : `Max: ${maxValue.toLocaleString()} ${metric === 'count' ? 'events' : 'min'}`}
+                ? `สูงสุด: ${metric === 'count' ? maxValue.toLocaleString() : formatBdHours(maxValue / 60)} ${metric === 'count' ? 'ครั้ง' : 'ชม.'}`
+                : `Max: ${metric === 'count' ? maxValue.toLocaleString() : formatBdHours(maxValue / 60)} ${metric === 'count' ? 'events' : 'hr'}`}
             </span>
           )}
           {rows.length === 0 && (
@@ -2382,9 +2912,9 @@ function BreakdownHeatmap({
                 {th ? 'ครั้ง' : 'events'}
                 {' · '}
                 <span className="font-medium text-orange-600">
-                  {tooltipEntry.bdMin.toLocaleString()}
+                  {formatBdHours(tooltipEntry.bdMin / 60)}
                 </span>{' '}
-                {th ? 'นาที' : 'min'}
+                {th ? 'ชม.' : 'hr'}
               </p>
               {tooltipEntry.topCat && (
                 <p className="truncate text-slate-400">
@@ -2402,18 +2932,72 @@ function BreakdownHeatmap({
   )
 }
 
-type OperatorMatrixPayload = {
-  monthKey: string
-  daysInMonth: number
-  rows: {
-    operatorId: string
-    employeeCode: string
-    name: string
-    cells: { parts: { partSamco: number; partName: string; okQty: number }[] }[]
-  }[]
+type OperatorMatrixPart = {
+  partSamco: number
+  partName: string
+  lineCode: string
+  workHours: number
 }
 
-function OperatorMonthMatrixTable({
+type OperatorMatrixRow = {
+  operatorId: string
+  employeeCode: string
+  name: string
+  cells: { parts: OperatorMatrixPart[] }[]
+}
+
+type OperatorMatrixPayload = {
+  year: number
+  month: number
+  monthKey: string
+  daysInMonth: number
+  rows: OperatorMatrixRow[]
+}
+
+function operatorMonthTotalHours(row: OperatorMatrixRow): number {
+  return row.cells.reduce(
+    (sum, cell) => sum + cell.parts.reduce((s, p) => s + p.workHours, 0),
+    0,
+  )
+}
+
+function isCalendarSunday(year: number, month: number, day: number): boolean {
+  return new Date(year, month - 1, day).getDay() === 0
+}
+
+function OperatorDayCell({
+  day,
+  parts,
+  sunday,
+  th,
+}: {
+  day: number
+  parts: OperatorMatrixPart[]
+  sunday: boolean
+  th: boolean
+}) {
+  const hrLabel = th ? 'ชม.' : 'hr'
+  const totalHours = parts.reduce((s, p) => s + p.workHours, 0)
+  return (
+    <div
+      className={cn(
+        'flex min-w-0 w-full flex-col items-center rounded-md border px-0.5 py-1 text-[11px] leading-tight',
+        sunday ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white',
+      )}
+    >
+      <p className={cn('text-[11px] font-semibold', sunday ? 'text-rose-700' : 'text-slate-500')}>
+        {day}
+      </p>
+      {parts.length > 0 ? (
+        <p className="mt-0.5 text-center font-semibold text-slate-800">
+          {totalHours.toLocaleString()} {hrLabel}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function OperatorMonthExpandTable({
   matrix,
   th,
   emptyMessage,
@@ -2422,86 +3006,101 @@ function OperatorMonthMatrixTable({
   th: boolean
   emptyMessage: string
 }) {
-  const unit = th ? 'ชิ้น' : 'pcs'
-  const fmtCell = (parts: { partSamco: number; partName: string; okQty: number }[]) => {
-    if (!parts.length) return ''
-    return parts.map((p) => `${p.partSamco}\n${p.okQty.toLocaleString()} ${unit}`).join('\n\n')
-  }
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const colCount = 4
 
-  const dayNums = Array.from({ length: matrix.daysInMonth }, (_, i) => i + 1)
-  const codeW = 'min-w-[6.5rem] w-[6.5rem]'
-  const nameSticky = 'left-[6.5rem]'
+  const sortedRows = useMemo(
+    () =>
+      [...matrix.rows].sort((a, b) => {
+        const c = a.employeeCode.localeCompare(b.employeeCode, 'th', { numeric: true, sensitivity: 'base' })
+        if (c !== 0) return c
+        return a.name.localeCompare(b.name, 'th', { sensitivity: 'base' })
+      }),
+    [matrix.rows],
+  )
 
   return (
-    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
-      <table className="min-w-max border-separate border-spacing-0 text-sm">
-        <thead className={cn(DASHBOARD_THEAD_STICKY, 'z-40 bg-slate-100 shadow-sm')}>
+    <div className={cn(DASHBOARD_TABLE_WRAP)}>
+      <table className={DASHBOARD_TABLE_REPORT}>
+        <thead className={DASHBOARD_THEAD_STICKY}>
           <tr>
-            <th
-              className={cn(
-                'sticky z-40 border-r border-slate-200 px-2 py-2 text-left',
-                DASHBOARD_MATRIX_TH_HEAD,
-                'left-0',
-                codeW,
-              )}
-            >
-              {th ? 'รหัสพนักงาน' : 'Employee ID'}
-            </th>
-            <th
-              className={cn(
-                'sticky z-40 min-w-[10rem] w-[10rem] border-r border-slate-200 px-2 py-2 text-left',
-                DASHBOARD_MATRIX_TH_HEAD,
-                nameSticky,
-              )}
-            >
-              {th ? 'ชื่อพนักงาน' : 'Name'}
-            </th>
-            {dayNums.map((d) => (
-              <th
-                key={d}
-                className={cn(
-                  'min-w-[5.5rem] max-w-[6.5rem] px-1 py-2 text-center leading-tight',
-                  DASHBOARD_MATRIX_TH_HEAD,
-                )}
-              >
-                {d}
-              </th>
-            ))}
+            <th className={DASHBOARD_TH_STICKY_SOFT} />
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'รหัส' : 'Code'}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'พนักงาน' : 'Name'}</th>
+            <th className={DASHBOARD_TH_STICKY_SOFT}>{th ? 'ชม.ทำงาน' : 'Work hours'}</th>
           </tr>
         </thead>
         <tbody>
-          {matrix.rows.length === 0 ? (
+          {sortedRows.length === 0 ? (
             <tr>
               <td
-                className="bg-white px-2 py-10 text-center text-slate-500"
-                colSpan={2 + matrix.daysInMonth}
+                colSpan={colCount}
+                className="border border-slate-100 px-3 py-12 text-center text-sm font-medium text-slate-600"
               >
                 {emptyMessage}
               </td>
             </tr>
           ) : (
-            matrix.rows.map((row) => (
-              <tr key={row.operatorId} className="border-b border-slate-100 hover:bg-slate-50/70">
-                <td
-                  className={`sticky left-0 z-20 ${codeW} border-r border-slate-100 bg-white px-2 py-2 align-top font-mono text-xs text-slate-800 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.04)]`}
-                >
-                  {row.employeeCode}
-                </td>
-                <td
-                  className={`sticky ${nameSticky} z-20 min-w-[10rem] w-[10rem] border-r border-slate-200 bg-white px-2 py-2 align-top text-slate-800 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.04)]`}
-                >
-                  {row.name}
-                </td>
-                {row.cells.map((c, i) => (
-                  <td
-                    key={i}
-                    className="max-w-[6.5rem] whitespace-pre-line break-words border-l border-slate-50 px-1.5 py-2 align-top text-center text-[11px] leading-snug text-slate-700"
-                  >
-                    {fmtCell(c.parts) || '\u00a0'}
-                  </td>
-                ))}
-              </tr>
-            ))
+            sortedRows.map((row) => {
+              const isExpanded = expandedKey === row.operatorId
+              const totalHours = operatorMonthTotalHours(row)
+              return (
+                <Fragment key={row.operatorId}>
+                  <tr className="hover:bg-slate-50/80">
+                    <td className="border border-slate-100 px-2 py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedKey(isExpanded ? null : row.operatorId)}
+                        className="inline-flex rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        aria-label={isExpanded ? (th ? 'ย่อรายวัน' : 'Collapse days') : (th ? 'ขยายรายวันทั้งเดือน' : 'Expand days')}
+                      >
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    </td>
+                    <td className="border border-slate-100 px-3 py-2 font-mono text-slate-700">{row.employeeCode}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-slate-700">{row.name}</td>
+                    <td className="border border-slate-100 px-3 py-2 text-right font-semibold text-slate-700">
+                      {totalHours.toLocaleString()}
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={colCount} className="border border-slate-100 bg-slate-50/50 px-4 py-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {th ? 'รายวันทั้งเดือน' : 'Every day of the month'}
+                        </p>
+                        <div className="space-y-1">
+                          <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
+                            {Array.from({ length: Math.min(16, matrix.daysInMonth) }, (_, i) => i + 1).map((d) => (
+                              <OperatorDayCell
+                                key={d}
+                                day={d}
+                                parts={row.cells[d - 1]?.parts ?? []}
+                                sunday={isCalendarSunday(matrix.year, matrix.month, d)}
+                                th={th}
+                              />
+                            ))}
+                          </div>
+                          {matrix.daysInMonth > 16 && (
+                            <div className="grid grid-cols-[repeat(16,minmax(0,1fr))] gap-1">
+                              {Array.from({ length: matrix.daysInMonth - 16 }, (_, i) => i + 17).map((d) => (
+                                <OperatorDayCell
+                                  key={d}
+                                  day={d}
+                                  parts={row.cells[d - 1]?.parts ?? []}
+                                  sunday={isCalendarSunday(matrix.year, matrix.month, d)}
+                                  th={th}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })
           )}
         </tbody>
       </table>
@@ -2544,7 +3143,7 @@ function SimpleTable({
   empty: string
 }) {
   return (
-    <div className={cn(DASHBOARD_TABLE_WRAP, 'max-w-full min-w-0 overflow-x-auto')}>
+    <div className={cn(DASHBOARD_TABLE_WRAP)}>
       <table className={DASHBOARD_TABLE_REPORT}>
         <thead className={DASHBOARD_THEAD_STICKY}>
           <tr>
