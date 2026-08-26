@@ -10,6 +10,11 @@ import { checkPermissionForSession } from '@/lib/permissions/guard'
 type Params = { params: Promise<{ id: string }> }
 
 const REOPEN_SHIFT_ROLES = new Set<UserRole>(['SUPERVISOR', 'MANAGER', 'ADMIN'])
+const HISTORY_SESSION_DELETE_ROLES = new Set<UserRole>(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
+
+function canDeleteHistorySessions(role: string | undefined | null): boolean {
+  return !!role && HISTORY_SESSION_DELETE_ROLES.has(role as UserRole)
+}
 
 export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await getOperatorContextFromApiRequest(req)
@@ -163,13 +168,18 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  if (!canDeleteHistorySessions(session.user?.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { id } = await params
-  await prisma.ngLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
-  await prisma.breakdownLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
-  await prisma.modelChange.deleteMany({ where: { sessionId: id } })
-  await prisma.hourlyRecord.deleteMany({ where: { sessionId: id } })
-  await prisma.productionSession.delete({ where: { id } })
+  await prisma.$transaction(async (tx) => {
+    await tx.ngLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
+    await tx.breakdownLog.deleteMany({ where: { hourlyRecord: { sessionId: id } } })
+    await tx.modelChange.deleteMany({ where: { sessionId: id } })
+    await tx.hourlyRecord.deleteMany({ where: { sessionId: id } })
+    await tx.productionSession.delete({ where: { id } })
+  })
 
   return NextResponse.json({ success: true })
 }

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { auditUserIdFromSession } from '@/lib/audit-user'
 import { parseThaiLocalToUtc } from '@/lib/time-utils'
 import { z } from 'zod'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+
+const HISTORY_RECORD_MUTATION_ROLES = new Set<UserRole>(['SUPERVISOR', 'ENGINEER', 'MANAGER', 'ADMIN'])
+
 const updateSchema = z.object({
   okQty: z.number().int().min(0).optional(),
   remark: z.string().optional(),
@@ -29,6 +33,10 @@ const updateSchema = z.object({
 })
 
 type Params = { params: Promise<{ id: string }> }
+
+function canMutateHistoryRecords(role: string | undefined | null): boolean {
+  return !!role && HISTORY_RECORD_MUTATION_ROLES.has(role as UserRole)
+}
 
 function normalizeBreakdownEntries(entries: NonNullable<z.infer<typeof updateSchema>['breakdown']>) {
   return entries.map((bd, index) => {
@@ -109,6 +117,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
         { status: 403 },
       )
     }
+    if (!canMutateHistoryRecords(session.user?.role)) {
+      return NextResponse.json(
+        { error: 'แก้ไขได้เฉพาะหัวหน้างาน / วิศวกร / ผู้จัดการ / Admin' },
+        { status: 403 },
+      )
+    }
 
     const { id } = await params
     const body = await req.json()
@@ -131,13 +145,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const auditUserId = await auditUserIdFromSession(session)
-
-    if (shouldReplaceBreakdown) {
-      await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
-    if (shouldReplaceNg) {
-      await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-    }
 
     let breakdownData: ReturnType<typeof normalizeBreakdownEntries> = []
     if (shouldReplaceBreakdown) {
@@ -252,10 +259,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const updated = await prisma.hourlyRecord.update({
-      where: { id },
-      data: updatePayload,
-      include: { breakdownLogs: true, ngLogs: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      if (shouldReplaceBreakdown) {
+        await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+      if (shouldReplaceNg) {
+        await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+      }
+
+      return tx.hourlyRecord.update({
+        where: { id },
+        data: updatePayload,
+        include: { breakdownLogs: true, ngLogs: true },
+      })
     })
 
     await prisma.auditLog.create({
@@ -283,12 +299,17 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  if (!canMutateHistoryRecords(session.user?.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { id } = await params
-  await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.modelChange.deleteMany({ where: { hourlyRecordId: id } })
-  await prisma.hourlyRecord.delete({ where: { id } })
+  await prisma.$transaction(async (tx) => {
+    await tx.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.ngLog.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.modelChange.deleteMany({ where: { hourlyRecordId: id } })
+    await tx.hourlyRecord.delete({ where: { id } })
+  })
 
   return NextResponse.json({ success: true })
 }
