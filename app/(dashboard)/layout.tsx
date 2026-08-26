@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth()
   const allowLineQr = (await headers()).get('x-allow-record-line-qr') === '1'
 
-  if (session) {
+  if (session?.user?.id) {
     const currentUser = await prisma.user.findUnique({
       where: { id: session.user.id },
       include: {
@@ -20,10 +20,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         section: { include: { division: true } },
       },
     })
+    if (!currentUser?.isActive) redirect('/login')
+    const effectiveRole = currentUser.role
     const scopedDivisionId =
-      session.user.role === 'ADMIN'
+      effectiveRole === 'ADMIN'
         ? null
-        : (currentUser?.divisionId ?? currentUser?.section?.divisionId ?? null)
+        : (currentUser.divisionId ?? currentUser.section?.divisionId ?? null)
     const unreadNotifications = await prisma.notification.findMany({
       where: { isRead: false, sessionId: { not: null } },
       select: { id: true, sessionId: true },
@@ -75,11 +77,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
 
     const alertBadgeCount = unreadInAppCount + telegramAttentionCount
-    const allowedMenuKeys = await getAllowedMenuKeysForUser(session.user.id, session.user.role)
+    const allowedMenuKeys = await getAllowedMenuKeysForUser(session.user.id, effectiveRole)
     return (
       <DashboardShell
         userName={session.user.name ?? undefined}
-        userRole={session.user.role ?? undefined}
+        userRole={effectiveRole}
         alertBadgeCount={alertBadgeCount}
         allowedMenuKeys={allowedMenuKeys}
       >

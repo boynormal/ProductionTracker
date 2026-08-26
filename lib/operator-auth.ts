@@ -17,10 +17,19 @@ async function resolveOperatorContext(
     if (session.user.employeeCode) {
       const dbUser = await prisma.user.findUnique({
         where: { employeeCode: session.user.employeeCode },
-        select: { id: true },
+        select: { id: true, isActive: true },
       })
-      if (dbUser) userId = dbUser.id
-      else return null
+      if (!dbUser?.isActive) return null
+      userId = dbUser.id
+    } else if (userId) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, isActive: true },
+      })
+      if (!dbUser?.isActive) return null
+      userId = dbUser.id
+    } else {
+      return null
     }
     return { operatorId: userId, source: 'nextauth' }
   }

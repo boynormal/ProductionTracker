@@ -68,6 +68,21 @@ export async function POST(req: NextRequest) {
 
   const { password, capablePartIds, ...data } = parsed.data
 
+  if (data.role === 'ADMIN') {
+    const actorId = session.user?.id
+    if (!actorId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const actor = await prisma.user.findUnique({
+      where: { id: actorId },
+      select: { role: true, isActive: true },
+    })
+    if (!actor?.isActive || actor.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Only an active Admin may assign the ADMIN role' },
+        { status: 403 },
+      )
+    }
+  }
+
   const existing = await prisma.user.findUnique({ where: { employeeCode: data.employeeCode } })
   if (existing) return NextResponse.json({ error: 'รหัสพนักงานซ้ำ' }, { status: 409 })
 
