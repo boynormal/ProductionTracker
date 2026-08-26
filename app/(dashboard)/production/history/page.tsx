@@ -1,12 +1,20 @@
 import { auth } from '@/lib/auth'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { prisma } from '@/lib/prisma'
+import { redirect } from 'next/navigation'
 import { getThaiReportingDateUTC, formatThaiDateUTCISO, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { HistoryClient } from './HistoryLoader'
 
 export default async function HistoryPage() {
   const session = await auth()
+  if (!session) redirect('/login')
+
+  const canViewHistory = await checkPermissionForSession(session, 'menu.production.history', {
+    menuPath: '/production/history',
+  })
+  if (!canViewHistory) redirect('/')
+
   const withLegacySessionDateFallback = false
 
   const reportingToday = getThaiReportingDateUTC()
