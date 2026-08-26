@@ -53,17 +53,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const d = parsed.data
+  const isCancelSession =
+    d.status === 'CANCELLED' && existing.status !== 'CANCELLED'
   const isReopenShift =
-    d.status === 'IN_PROGRESS' && existing.status === 'COMPLETED'
+    d.status === 'IN_PROGRESS' &&
+    (existing.status === 'COMPLETED' || existing.status === 'CANCELLED')
 
-  if (d.status === 'IN_PROGRESS' && existing.status === 'CANCELLED') {
-    return NextResponse.json(
-      { error: 'ไม่สามารถเปิดกะจากสถานะยกเลิกได้' },
-      { status: 400 },
-    )
-  }
-
-  if (isReopenShift) {
+  // CANCEL hides sessions from dashboard/reports and was previously irreversible —
+  // restrict cancel + reopen (including restore from CANCELLED) to privileged roles.
+  if (isCancelSession || isReopenShift) {
     const dbUser = await prisma.user.findUnique({
       where: { id: session.user.id! },
       select: { role: true, isActive: true },
@@ -71,13 +69,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!dbUser?.isActive || !REOPEN_SHIFT_ROLES.has(dbUser.role)) {
       return NextResponse.json(
         {
-          error:
-            'เฉพาะหัวหน้างาน ผู้จัดการ หรือ Admin เท่านั้นที่ยกเลิกปิดกะได้ — Only Supervisor, Manager, or Admin may reopen a completed shift.',
+          error: isCancelSession
+            ? 'เฉพาะหัวหน้างาน ผู้จัดการ หรือ Admin เท่านั้นที่ยกเลิก Session ได้ — Only Supervisor, Manager, or Admin may cancel a session.'
+            : 'เฉพาะหัวหน้างาน ผู้จัดการ หรือ Admin เท่านั้นที่ยกเลิกปิดกะได้ — Only Supervisor, Manager, or Admin may reopen a completed or cancelled shift.',
         },
         { status: 403 },
       )
     }
+  }
 
+  if (isReopenShift) {
     const oppositeShift = existing.shiftType === 'NIGHT' ? 'DAY' : 'NIGHT'
     const conflictingOpenSession = await prisma.productionSession.findFirst({
       where: {
@@ -128,20 +129,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const auditAction =
     d.status === 'COMPLETED'
       ? 'COMPLETE_SESSION'
-      : d.status === 'CANCELLED'
+      : isCancelSession
         ? 'CANCEL_SESSION'
         : isReopenShift
           ? 'REOPEN_SESSION'
           : 'UPDATE_SESSION'
-  const auditDetails = isReopenShift
-    ? {
-        ...updateData,
-        previousStatus: existing.status,
-        lineId: existing.lineId,
-        sessionDate: existing.sessionDate.toISOString(),
-        shiftType: existing.shiftType,
-      }
-    : updateData
+  const auditDetails =
+    isReopenShift || isCancelSession
+      ? {
+          ...updateData,
+          previousStatus: existing.status,
+          lineId: existing.lineId,
+          sessionDate: existing.sessionDate.toISOString(),
+          shiftType: existing.shiftType,
+        }
+      : updateData
 
   await prisma.auditLog.create({
     data: {
