@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+import { parseThaiCalendarDateUtc } from '@/lib/time-utils'
 import { otPlanBatchSchema } from '@/lib/validations/production'
 import type { Prisma } from '@prisma/client'
 
@@ -55,6 +56,12 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
+  const canView = await checkPermissionForSession(session, 'menu.production.otPlan', {
+    menuPath: '/production/ot-plan',
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canView) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const mode = searchParams.get('mode') === 'year' ? 'year' : 'month'
   const lineIdParam = searchParams.get('lineId')?.trim() || undefined
   const divisionIdParam = searchParams.get('divisionId')?.trim() || undefined
@@ -254,11 +261,6 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.otplan.write', {
-    apiPath: req.nextUrl.pathname,
-  })
-  if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
   try {
     const raw = await req.json()
     const parsed = otPlanBatchSchema.safeParse(raw)
@@ -266,27 +268,71 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
 
-    const results = await Promise.all(
-      parsed.data.items.map((item) =>
-        prisma.otPlan.upsert({
+    type ParsedItem = (typeof parsed.data.items)[number]
+    const preparedItems: Array<{ item: ParsedItem; planDate: Date }> = []
+    for (const item of parsed.data.items) {
+      const planDate = parseThaiCalendarDateUtc(item.planDate)
+      if (!planDate) {
+        return NextResponse.json({ error: 'planDate must be a valid YYYY-MM-DD date' }, { status: 400 })
+      }
+      preparedItems.push({ item, planDate })
+    }
+
+    const requestedLineIds = [...new Set(preparedItems.map(({ item }) => item.lineId))]
+    const targetLines = await prisma.line.findMany({
+      where: { id: { in: requestedLineIds }, isActive: true },
+      select: {
+        id: true,
+        sectionId: true,
+        section: {
+          select: {
+            divisionId: true,
+            division: { select: { departmentId: true } },
+          },
+        },
+      },
+    })
+    if (targetLines.length !== requestedLineIds.length) {
+      return NextResponse.json({ error: 'One or more lines are invalid or inactive' }, { status: 400 })
+    }
+
+    const targetPermissions = await Promise.all(
+      targetLines.map((line) =>
+        checkPermissionForSession(session, 'api.production.otplan.write', {
+          apiPath: req.nextUrl.pathname,
+          lineId: line.id,
+          sectionId: line.sectionId,
+          divisionId: line.section?.divisionId,
+          departmentId: line.section?.division.departmentId,
+        }),
+      ),
+    )
+    if (targetPermissions.some((allowed) => !allowed)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const results = await prisma.$transaction(
+      preparedItems.map(({ item, planDate }) => {
+        const hasRemark = Object.prototype.hasOwnProperty.call(item, 'remark')
+        const update: Prisma.OtPlanUpdateInput = { plannedHours: item.plannedHours }
+        if (hasRemark) update.remark = item.remark ?? null
+
+        return prisma.otPlan.upsert({
           where: {
             lineId_planDate: {
               lineId: item.lineId,
-              planDate: new Date(item.planDate),
+              planDate,
             },
           },
-          update: {
-            plannedHours: item.plannedHours,
-            remark: item.remark ?? null,
-          },
+          update,
           create: {
             lineId: item.lineId,
-            planDate: new Date(item.planDate),
+            planDate,
             plannedHours: item.plannedHours,
             remark: item.remark ?? null,
           },
-        }),
-      ),
+        })
+      }),
     )
 
     return NextResponse.json({ data: results, count: results.length }, { status: 200 })
