@@ -5,6 +5,7 @@ import { auditUserIdFromSession } from '@/lib/audit-user'
 import { parseThaiLocalToUtc } from '@/lib/time-utils'
 import { z } from 'zod'
 import { checkPermissionForSession } from '@/lib/permissions/guard'
+import { LINE_PERMISSION_SELECT, permissionContextForLine } from '@/lib/permissions/resource-context'
 const updateSchema = z.object({
   okQty: z.number().int().min(0).optional(),
   remark: z.string().optional(),
@@ -102,7 +103,33 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
+    const { id } = await params
+    const existing = await prisma.hourlyRecord.findUnique({
+      where: { id },
+      include: {
+        session: {
+          select: {
+            lineId: true,
+            machineId: true,
+            shiftType: true,
+            line: { select: LINE_PERMISSION_SELECT },
+          },
+        },
+        breakdownLogs: true,
+        ngLogs: true,
+      },
+    })
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    const canWrite = await checkPermissionForSession(
+      session,
+      'api.production.record.write',
+      permissionContextForLine(
+        { apiPath: req.nextUrl.pathname },
+        existing.session.line,
+        { machineId: existing.session.machineId, shiftType: existing.session.shiftType },
+      ),
+    )
     if (!canWrite) {
       return NextResponse.json(
         { error: 'แก้ไขได้เฉพาะหัวหน้างาน / วิศวกร / ผู้จัดการ / Admin' },
@@ -110,7 +137,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
       )
     }
 
-    const { id } = await params
     const body = await req.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
@@ -119,16 +145,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const data = parsed.data
     const shouldReplaceBreakdown = Object.prototype.hasOwnProperty.call(body, 'breakdown')
     const shouldReplaceNg = Object.prototype.hasOwnProperty.call(body, 'ng')
-
-    const existing = await prisma.hourlyRecord.findUnique({
-      where: { id },
-      include: {
-        session: { select: { lineId: true } },
-        breakdownLogs: true,
-        ngLogs: true,
-      },
-    })
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const auditUserId = await auditUserIdFromSession(session)
 
@@ -279,12 +295,35 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const canWrite = await checkPermissionForSession(session, 'api.production.record.write', { apiPath: req.nextUrl.pathname })
+  const { id } = await params
+  const existing = await prisma.hourlyRecord.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      session: {
+        select: {
+          machineId: true,
+          shiftType: true,
+          line: { select: LINE_PERMISSION_SELECT },
+        },
+      },
+    },
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const canWrite = await checkPermissionForSession(
+    session,
+    'api.production.record.write',
+    permissionContextForLine(
+      { apiPath: req.nextUrl.pathname },
+      existing.session.line,
+      { machineId: existing.session.machineId, shiftType: existing.session.shiftType },
+    ),
+  )
   if (!canWrite) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { id } = await params
   await prisma.breakdownLog.deleteMany({ where: { hourlyRecordId: id } })
   await prisma.ngLog.deleteMany({ where: { hourlyRecordId: id } })
   await prisma.modelChange.deleteMany({ where: { hourlyRecordId: id } })

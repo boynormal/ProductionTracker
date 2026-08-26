@@ -10,6 +10,10 @@ function now() {
   return new Date()
 }
 
+function normalize(v: string | null | undefined): string {
+  return String(v ?? '').trim()
+}
+
 function matchShift<T extends { shiftType: string | null }>(row: T, context: PermissionCheckContext): boolean {
   if (!row.shiftType) return true
   return row.shiftType === (context.shiftType ?? null)
@@ -30,7 +34,16 @@ function evaluateScopedEffects<T extends ScopeLike | OverrideLike>(
   for (const row of rows) {
     if (row.effect === 'ALLOW') hasAllowRows = true
     if (!matchShift(row, context)) continue
-    const matched = scopeMatches(row.scopeType, row.scopeValue, context)
+    // SHIFT-only rows from the admin UI store the shift on `shiftType` and leave
+    // `scopeValue` null. Treat either field as the expected shift.
+    const matched =
+      row.scopeType === 'SHIFT'
+        ? (() => {
+            const expected = normalize(row.scopeValue) || row.shiftType
+            if (!expected) return false
+            return normalize(context.shiftType) === normalize(expected)
+          })()
+        : scopeMatches(row.scopeType, row.scopeValue, context)
     if (!matched) continue
     if (row.effect === 'DENY') denyMatched = true
     if (row.effect === 'ALLOW') allowMatched = true
