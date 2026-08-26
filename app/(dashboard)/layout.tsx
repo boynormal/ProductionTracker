@@ -10,7 +10,11 @@ import { getAllowedMenuKeysForUser } from '@/lib/permissions/guard'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
-  const allowLineQr = (await headers()).get('x-allow-record-line-qr') === '1'
+  const hdrs = await headers()
+  /** Only trust middleware-issued flag on the line-QR record path (never client-spoofed alone). */
+  const allowLineQr =
+    hdrs.get('x-allow-record-line-qr') === '1' &&
+    hdrs.get('x-middleware-pathname') === '/production/record'
 
   if (session) {
     const currentUser = await prisma.user.findUnique({

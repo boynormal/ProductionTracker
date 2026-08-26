@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyScanOperatorToken, SCAN_COOKIE_NAME } from '@/lib/scan-session'
 
@@ -46,6 +47,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     /**
      * Middleware / edge: กำหนดว่า path ไหนเข้าได้โดยไม่มี session
      * - /scan/* = QR เข้าเครื่อง — ไม่ใช้ NextAuth ก่อน (ยืนยันด้วย PIN ในหน้า)
+     *
+     * NextAuth v5: เมื่อ middleware ใช้ `auth((req) => …)` ค่า `false` จะไม่ redirect —
+     * ต้องคืน `NextResponse` ถึงจะบังคับที่ edge จริง (ดู node_modules/next-auth/lib/index.js handleAuth)
      */
     async authorized({ auth, request }) {
       const p = request.nextUrl.pathname
@@ -53,8 +57,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (p.startsWith('/api/scan')) return true
       if (p.startsWith('/login')) return true
       if (p.startsWith('/api/auth')) return true
+      /** Cron / scheduler: Bearer / HMAC — auth ใน route handler */
       if (p.startsWith('/api/notifications/check')) return true
-      /** Cron / scheduler: POST + Bearer / HMAC — auth ใน route handler */
+      if (p.startsWith('/api/notifications/hourly')) return true
       if (p === '/api/production/sessions/auto-close') return true
       if (auth?.user) return true
 
@@ -73,7 +78,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (raw && (await verifyScanOperatorToken(raw))) return true
       }
 
-      return false
+      const signInUrl = request.nextUrl.clone()
+      signInUrl.pathname = '/login'
+      signInUrl.search = ''
+      signInUrl.searchParams.set('callbackUrl', request.nextUrl.href)
+      return NextResponse.redirect(signInUrl)
     },
     jwt({ token, user }) {
       if (user) {
