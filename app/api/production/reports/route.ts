@@ -266,6 +266,7 @@ export async function GET(req: NextRequest) {
   const lineMap = new Map<string, LineAgg>()
   const bdLineMap = new Map<string, BdLineAgg>()
   const ngLineMap = new Map<string, NgLineAgg>()
+  const linePartOkMap = new Map<string, number>()
   const lineIdleMap = new Map<string, LineIdleAgg>()
   const countedIdleSessions = new Set<string>()
   /** hourly-record hours per line×period (1 record = 1 hr) */
@@ -349,6 +350,8 @@ export async function GET(req: NextRequest) {
     }
 
     const lk = `${r.session.lineId}|${period}`
+    const linePartKey = `${lk}|${r.partId}`
+    linePartOkMap.set(linePartKey, (linePartOkMap.get(linePartKey) ?? 0) + r.okQty)
     if (!lineMap.has(lk)) {
       lineMap.set(lk, {
         lineId: r.session.lineId,
@@ -724,10 +727,15 @@ export async function GET(req: NextRequest) {
   const byLineNg = Array.from(ngLineMap.values())
     .map((e) => {
       const cats = Array.from(e.categories.values()).sort((a, b) => b.ngQty - a.ngQty)
-      const parts = Array.from(e.parts.values()).sort((a, b) => {
-        if (b.ngQty !== a.ngQty) return b.ngQty - a.ngQty
-        return a.partSamco - b.partSamco
-      })
+      const parts = Array.from(e.parts.values())
+        .map((part) => ({
+          ...part,
+          okQty: linePartOkMap.get(`${e.lineId}|${e.period}|${part.partId}`) ?? part.okQty,
+        }))
+        .sort((a, b) => {
+          if (b.ngQty !== a.ngQty) return b.ngQty - a.ngQty
+          return a.partSamco - b.partSamco
+        })
       const total = e.okQty + e.ngQty
       return {
         lineId: e.lineId,
