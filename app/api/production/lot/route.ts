@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
-  getThaiTodayUTC,
+  getThaiReportingDateUTC,
   dayEndExclusiveUTC,
   parseThaiCalendarDateUtc,
 } from '@/lib/time-utils'
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ─── Date range ───
-  const today = getThaiTodayUTC()
+  const reportingToday = getThaiReportingDateUTC()
   let from: Date | undefined
   let toExclusive: Date | undefined
 
@@ -57,8 +57,8 @@ export async function GET(req: NextRequest) {
       from = d
       toExclusive = dayEndExclusiveUTC(d)
     } else {
-      from = today
-      toExclusive = dayEndExclusiveUTC(today)
+      from = reportingToday
+      toExclusive = dayEndExclusiveUTC(reportingToday)
     }
   } else {
     const monthStr = searchParams.get('month')
