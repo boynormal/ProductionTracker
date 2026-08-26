@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 import { parseThaiCalendarDateUtc, dayEndExclusiveUTC } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { MAX_PRODUCTION_REPORT_RANGE_DAYS } from '@/lib/constants/production-reports'
@@ -31,6 +32,11 @@ function utcMonthRangeFromDate(fromDate: Date): { start: Date; endExclusive: Dat
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const canViewReport = await checkPermissionForSession(session, 'menu.production.report', {
+    menuPath: '/production/report',
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canViewReport) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const from = searchParams.get('from')

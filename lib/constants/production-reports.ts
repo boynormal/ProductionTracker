@@ -1,7 +1,7 @@
 import { dayEndExclusiveUTC, parseThaiCalendarDateUtc } from '@/lib/time-utils'
 
 /** ช่วงวันที่สูงสุดต่อคำขอ GET /api/production/reports (ลดภาระ query + memory) */
-export const MAX_PRODUCTION_REPORT_RANGE_DAYS = 365
+export const MAX_PRODUCTION_REPORT_RANGE_DAYS = 366
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
