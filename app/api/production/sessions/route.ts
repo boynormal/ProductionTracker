@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { UserRole } from '@prisma/client'
+import type { Prisma, SessionStatus, UserRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getOperatorContextFromApiRequest } from '@/lib/operator-auth'
 import { getCurrentShift } from '@/lib/utils/shift'
@@ -11,6 +11,7 @@ const WITH_LEGACY_SESSION_DATE_FALLBACK = false
 const DEFAULT_OVERRIDE_ROLES: UserRole[] = ['SUPERVISOR', 'ENGINEER']
 
 type GuardMode = 'warn' | 'enforce'
+const SESSION_STATUSES: SessionStatus[] = ['IN_PROGRESS', 'COMPLETED', 'CANCELLED']
 
 function getLineTargetGuardMode(): GuardMode {
   const raw = (process.env.LINE_TARGET_GUARD_MODE ?? 'warn').trim().toLowerCase()
@@ -43,6 +44,10 @@ function parseBool(v: unknown): boolean {
   return v === true || v === 'true' || v === 1 || v === '1'
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Internal server error'
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getOperatorContextFromApiRequest(req)
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -54,16 +59,22 @@ export async function GET(req: NextRequest) {
 
   const machineId = searchParams.get('machineId')
   const date      = searchParams.get('date')
-  const status    = searchParams.get('status')
+  const statusRaw = searchParams.get('status')
   const lineId    = searchParams.get('lineId')
   const detailed  = searchParams.get('detailed') === '1'
   /** Optional: align list with record page / unique key (sessionDate + shiftType + lineId) */
   const sessionDateStr = searchParams.get('sessionDate')
   const shiftTypeRaw   = searchParams.get('shiftType')
 
-  const where: any = {}
+  const where: Prisma.ProductionSessionWhereInput = {}
   if (machineId) where.machineId = machineId
-  if (status) where.status = status
+  if (statusRaw) {
+    const normalizedStatus = statusRaw.trim().toUpperCase() as SessionStatus
+    if (!SESSION_STATUSES.includes(normalizedStatus)) {
+      return NextResponse.json({ error: 'status must be IN_PROGRESS, COMPLETED, or CANCELLED' }, { status: 400 })
+    }
+    where.status = normalizedStatus
+  }
   if (lineId) where.lineId = lineId
   if (date) {
     const dayStart = parseThaiPickerDateToUTC(date)
@@ -149,15 +160,13 @@ export async function POST(req: NextRequest) {
     })
     if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (operatorCtx.source === 'nextauth') {
-      const canWrite = await checkPermission({
-        userId: operatorId,
-        role: dbUser.role,
-        permissionKey: 'api.production.session.write',
-        context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
-      })
-      if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const canWrite = await checkPermission({
+      userId: operatorId,
+      role: dbUser.role,
+      permissionKey: 'api.production.session.write',
+      context: { apiPath: req.nextUrl.pathname, sectionId: dbUser.sectionId },
+    })
+    if (!canWrite) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json()
 
@@ -336,8 +345,8 @@ export async function POST(req: NextRequest) {
       : null
 
     return NextResponse.json({ data: created, ...(warning ? { warning } : {}) }, { status: 201 })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('POST /api/production/sessions error:', e)
-    return NextResponse.json({ error: e.message ?? 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: errorMessage(e) }, { status: 500 })
   }
 }
