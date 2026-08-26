@@ -12,6 +12,10 @@ type Params = { params: Promise<{ id: string }> }
 export async function GET(req: NextRequest, { params }: Params) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const canRead = await checkPermissionForSession(session, 'api.admin.users.read', {
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canRead) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   const user = await prisma.user.findUnique({
