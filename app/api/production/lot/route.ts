@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
-  getThaiTodayUTC,
+  getThaiReportingDateUTC,
   dayEndExclusiveUTC,
   parseThaiCalendarDateUtc,
 } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
+import { requireApiPermission } from '@/lib/permissions/route-guard'
 
 type Mode = 'day' | 'month'
 const WITH_LEGACY = false
@@ -24,8 +24,8 @@ function monthToRange(monthStr: string): { from: Date; toExclusive: Date } | nul
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireApiPermission(req, 'menu.production.lot', { menuPath: '/production/lot' })
+  if (!guard.ok) return guard.response
 
   const { searchParams } = new URL(req.url)
   const modeRaw = searchParams.get('mode')
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ─── Date range ───
-  const today = getThaiTodayUTC()
+  const today = getThaiReportingDateUTC()
   let from: Date | undefined
   let toExclusive: Date | undefined
 
