@@ -10,6 +10,7 @@ import { checkPermissionForSession } from '@/lib/permissions/guard'
 type Params = { params: Promise<{ id: string }> }
 
 const REOPEN_SHIFT_ROLES = new Set<UserRole>(['SUPERVISOR', 'MANAGER', 'ADMIN'])
+const DELETE_SESSION_ROLES = new Set<UserRole>(['MANAGER', 'ADMIN'])
 
 export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await getOperatorContextFromApiRequest(req)
@@ -161,6 +162,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const canWrite = await checkPermissionForSession(session, 'api.production.session.write', { apiPath: req.nextUrl.pathname })
   if (!canWrite) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const role = session.user?.role as UserRole | undefined
+  if (!role || !DELETE_SESSION_ROLES.has(role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
