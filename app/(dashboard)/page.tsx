@@ -1,6 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getThaiTodayUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
+import { getThaiReportingDateUTC, dayEndExclusiveUTC } from '@/lib/utils/thai-time'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
 import { enrichSessionsWithCyclePerformance } from '@/lib/production/enrich-dashboard-sessions'
 import { DashboardClient } from './DashboardLoader'
@@ -12,14 +12,14 @@ export default async function DashboardPage() {
   const session = await auth()
   const withLegacySessionDateFallback = false
 
-  const today = getThaiTodayUTC()
-  const todayIso = today.toISOString().slice(0, 10)
-  const todayMonth = todayIso.slice(0, 7)
+  const reportingToday = getThaiReportingDateUTC()
+  const reportingTodayIso = reportingToday.toISOString().slice(0, 10)
+  const reportingMonth = reportingTodayIso.slice(0, 7)
 
   const [machines, activeSessions, unreadAlertsCount, totalMachines, divisions, sections, lineCountByDivision] = await Promise.all([
     prisma.productionSession.findMany({
       where: {
-        ...reportingDateRangeWhere(today, dayEndExclusiveUTC(today), withLegacySessionDateFallback),
+        ...reportingDateRangeWhere(reportingToday, dayEndExclusiveUTC(reportingToday), withLegacySessionDateFallback),
         status: { in: ['IN_PROGRESS', 'COMPLETED'] },
       },
       include: {
@@ -33,7 +33,7 @@ export default async function DashboardPage() {
     }),
     prisma.productionSession.count({
       where: {
-        ...reportingDateRangeWhere(today, dayEndExclusiveUTC(today), withLegacySessionDateFallback),
+        ...reportingDateRangeWhere(reportingToday, dayEndExclusiveUTC(reportingToday), withLegacySessionDateFallback),
         status: 'IN_PROGRESS',
       },
     }),
@@ -77,8 +77,8 @@ export default async function DashboardPage() {
     <DashboardClient
       initialData={JSON.parse(JSON.stringify({
         mode: 'day',
-        from: todayIso,
-        to: todayIso,
+        from: reportingTodayIso,
+        to: reportingTodayIso,
         divisionId: null,
         sectionId: null,
         sessions: machinesEnriched,
@@ -89,8 +89,8 @@ export default async function DashboardPage() {
           .filter(r => r.divisionCode)
           .map(r => ({ divisionCode: r.divisionCode as string, total: r._count.id })),
       }))}
-      initialDate={todayIso}
-      initialMonth={todayMonth}
+      initialDate={reportingTodayIso}
+      initialMonth={reportingMonth}
       divisions={divisions}
       sections={sections}
       userName={session?.user?.name ?? ''}
