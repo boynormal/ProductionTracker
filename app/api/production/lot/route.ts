@@ -3,11 +3,12 @@ import type { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
-  getThaiTodayUTC,
+  getThaiReportingDateUTC,
   dayEndExclusiveUTC,
   parseThaiCalendarDateUtc,
 } from '@/lib/time-utils'
 import { reportingDateRangeWhere } from '@/lib/reporting-date-query'
+import { checkPermissionForSession } from '@/lib/permissions/guard'
 
 type Mode = 'day' | 'month'
 const WITH_LEGACY = false
@@ -27,6 +28,12 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const canViewLot = await checkPermissionForSession(session, 'menu.production.lot', {
+    menuPath: '/production/lot',
+    apiPath: req.nextUrl.pathname,
+  })
+  if (!canViewLot) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const { searchParams } = new URL(req.url)
   const modeRaw = searchParams.get('mode')
   const mode: Mode = modeRaw === 'month' ? 'month' : 'day'
@@ -37,19 +44,14 @@ export async function GET(req: NextRequest) {
   const takeParam = Number(searchParams.get('take') ?? '500')
   const take = isNaN(takeParam) || takeParam < 1 ? 500 : Math.min(takeParam, 1000)
 
-  // ต้องมีอย่างน้อยหนึ่งตัวกรอง: date/month หรือ lot
-  const hasDateFilter = searchParams.has('date') || searchParams.has('month') || mode === 'day'
-  const hasLotFilter = !!lot
-  if (!hasDateFilter && !hasLotFilter) {
-    return NextResponse.json({ error: 'Provide at least date, month, or lot param' }, { status: 400 })
-  }
-
   // ─── Date range ───
-  const today = getThaiTodayUTC()
+  const reportingToday = getThaiReportingDateUTC()
+  const hasExplicitDateFilter = mode === 'month' ? searchParams.has('month') : searchParams.has('date')
+  const applyDateFilter = hasExplicitDateFilter || !lot
   let from: Date | undefined
   let toExclusive: Date | undefined
 
-  if (mode === 'day') {
+  if (applyDateFilter && mode === 'day') {
     const dateStr = searchParams.get('date')
     if (dateStr) {
       const d = parseThaiCalendarDateUtc(dateStr)
@@ -57,10 +59,10 @@ export async function GET(req: NextRequest) {
       from = d
       toExclusive = dayEndExclusiveUTC(d)
     } else {
-      from = today
-      toExclusive = dayEndExclusiveUTC(today)
+      from = reportingToday
+      toExclusive = dayEndExclusiveUTC(reportingToday)
     }
-  } else {
+  } else if (applyDateFilter) {
     const monthStr = searchParams.get('month')
     if (!monthStr) return NextResponse.json({ error: 'month is required (YYYY-MM) for month mode' }, { status: 400 })
     const range = monthToRange(monthStr)
@@ -84,7 +86,12 @@ export async function GET(req: NextRequest) {
   }
 
   // ─── Build where ───
-  const sessionDateWhere = reportingDateRangeWhere(from, toExclusive, WITH_LEGACY)
+  const sessionDateWhere: Prisma.ProductionSessionWhereInput = from && toExclusive
+    ? reportingDateRangeWhere(from, toExclusive, WITH_LEGACY)
+    : {}
+  const orderBy: Prisma.HourlyRecordOrderByWithRelationInput[] = applyDateFilter
+    ? [{ session: { reportingDate: 'desc' } }, { session: { shiftType: 'asc' } }, { hourSlot: 'asc' }]
+    : [{ recordTime: 'desc' }]
 
   const where: Prisma.HourlyRecordWhereInput = {
     session: {
@@ -119,14 +126,14 @@ export async function GET(req: NextRequest) {
         include: { problemCategory: { select: { id: true, code: true, name: true } } },
       },
     },
-    orderBy: [{ session: { reportingDate: 'desc' } }, { session: { shiftType: 'asc' } }, { hourSlot: 'asc' }],
+    orderBy,
     take,
   })
 
   return NextResponse.json({
     data: records,
     total: records.length,
-    from: from.toISOString().slice(0, 10),
-    to: new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    from: from?.toISOString().slice(0, 10) ?? null,
+    to: toExclusive ? new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : null,
   })
 }

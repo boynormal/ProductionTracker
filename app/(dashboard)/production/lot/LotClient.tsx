@@ -81,13 +81,18 @@ function buildSWRKey(
   partId: string,
   lotSearch: string,
 ): string {
-  const params = new URLSearchParams({ mode })
-  if (mode === 'day') params.set('date', selectedDate)
-  else params.set('month', selectedMonth)
+  const trimmedLot = lotSearch.trim()
+  const params = new URLSearchParams()
+  if (trimmedLot) {
+    params.set('lot', trimmedLot)
+  } else {
+    params.set('mode', mode)
+    if (mode === 'day') params.set('date', selectedDate)
+    else params.set('month', selectedMonth)
+  }
   if (divisionId) params.set('divisionId', divisionId)
   if (lineId) params.set('lineId', lineId)
   if (partId) params.set('partId', partId)
-  if (lotSearch.trim()) params.set('lot', lotSearch.trim())
   return `/api/production/lot?${params.toString()}`
 }
 
@@ -132,10 +137,14 @@ export function LotClient({ divisions, lines, parts, initialDate, initialMonth }
     setExpandedIds(new Set())
   }
 
+  const isLotTraceSearch = !!lotSearch.trim()
   // ซ่อนคอลัมน์ Lot ถ้ากรอก lot search เพราะทุก row เป็น lot เดียวกัน
-  const showLotCol = !lotSearch.trim()
+  const showLotCol = !isLotTraceSearch
 
   const periodLabel = (() => {
+    if (isLotTraceSearch) {
+      return locale === 'th' ? 'ทุกวันที่ของ Lot ที่ค้นหา' : 'All dates for lot search'
+    }
     if (mode === 'day') {
       try { return format(parseISO(selectedDate), 'd MMM yyyy', { locale: locale === 'th' ? th : undefined }) }
       catch { return selectedDate }
