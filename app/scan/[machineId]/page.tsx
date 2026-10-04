@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Factory, Loader2, QrCode, User, CheckCircle2, Search } from 'lucide-react'
+import { ManualGuideMenu } from '@/components/layout/ManualGuideMenu'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -79,6 +80,9 @@ export default function ScanPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-4">
       <div className="mx-auto max-w-md">
+        <div className="mb-3 flex justify-end">
+          <ManualGuideMenu variant="scan" />
+        </div>
         {/* Machine Info Card */}
         <div className="mb-4 rounded-2xl bg-blue-600 p-5 text-white shadow-lg">
           <div className="flex items-start justify-between">

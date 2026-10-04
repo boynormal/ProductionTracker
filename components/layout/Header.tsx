@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Bell, Globe, User } from 'lucide-react'
 import { useI18n } from '@/lib/i18n'
+import { ManualGuideMenu } from '@/components/layout/ManualGuideMenu'
 
 interface HeaderProps {
   userName?: string
@@ -21,6 +22,7 @@ export function Header({ userName, userRole, alertBadgeCount = 0 }: HeaderProps)
 
       {/* Right: actions */}
       <div className="flex items-center gap-3">
+        <ManualGuideMenu variant="header" />
         {/* Language toggle */}
         <button
           onClick={() => setLocale(locale === 'th' ? 'en' : 'th')}

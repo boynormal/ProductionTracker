@@ -21,6 +21,7 @@ import {
 import { buildBreakdownIntervalsFromSlotMinutes } from '@/lib/utils/breakdown-datetime'
 import { Plus, Minus, Factory, Clock, CheckCircle2, XCircle, Wrench, Loader2, Coffee, Search, User, ChevronsUpDown, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
+import { ManualGuideMenu } from '@/components/layout/ManualGuideMenu'
 
 const createSchema = (t: ReturnType<typeof useI18n>['t']) => z.object({
   partId:    z.string().min(1, t('recordSelectPart')),
@@ -1104,7 +1105,10 @@ export function RecordClient({
   if (requiresScanPin) {
     return (
       <div className="mx-auto max-w-md space-y-4 py-6">
-        <div className="flex justify-end">{localeToggleMobile}</div>
+        <div className="flex items-center justify-end gap-2">
+          <ManualGuideMenu variant="scan" />
+          {localeToggleMobile}
+        </div>
         <div className="rounded-2xl bg-indigo-600 p-5 text-white shadow-lg">
           <div className="flex items-center gap-2 text-sm font-medium text-indigo-200">
             <Factory size={18} />
@@ -1232,7 +1236,10 @@ export function RecordClient({
           {sessionData && <span className="text-green-600 ml-2">Session {t('recordSessionActive')}</span>}
         </p>
         </div>
-        {localeToggleMobile}
+        <div className="flex shrink-0 items-center gap-2">
+          <ManualGuideMenu variant="scan" />
+          {localeToggleMobile}
+        </div>
       </div>
       {sessionGuardWarning ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
